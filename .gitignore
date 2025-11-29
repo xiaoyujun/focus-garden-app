@@ -27,3 +27,13 @@ ios/
 
 # 系统文件
 Thumbs.db
+
+# 临时文件
+*.apk
+*.tar.gz
+*.gz
+*.bin
+chunks.json
+upload_data.json
+temp_*.txt
+css_*.txt
