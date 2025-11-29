@@ -7,6 +7,7 @@ import {
   List, ChevronLeft, ChevronRight, Gauge, Clock,
   RotateCcw, RotateCw, X, Music2, Headphones
 } from 'lucide-vue-next'
+import AudioErrorDialog from '../components/AudioErrorDialog.vue'
 
 const store = useAudioStore()
 
@@ -60,6 +61,7 @@ async function loadCurrentTrack() {
     }
   } catch (e) {
     console.error('加载音频失败:', e)
+    store.notifyError(`加载音频失败：${e.message || e}`)
   } finally {
     isLoading.value = false
   }
@@ -79,6 +81,7 @@ async function togglePlay() {
       store.isPlaying = true
     } catch (e) {
       console.error('播放失败:', e)
+      store.notifyError(`播放失败：${e.message || e}`)
     }
   }
 }
@@ -210,6 +213,8 @@ async function handleSelectDirectory() {
   const result = await store.selectDirectory()
   if (result.success && store.playlist.length > 0) {
     await loadCurrentTrack()
+  } else if (!result.success && result.error) {
+    store.notifyError(`选择音频失败：${result.error}`)
   }
 }
 
@@ -221,6 +226,11 @@ async function handleRestoreDirectory() {
   
   if (result.success && store.playlist.length > 0) {
     await loadCurrentTrack()
+  } else if (!result.success) {
+    const msg = result.error === 'no-native-cache'
+      ? '未找到可恢复的音频，请重新选择目录'
+      : (result.error || '恢复上次播放失败，请重新选择目录')
+    store.notifyError(msg)
   }
 }
 
@@ -260,6 +270,7 @@ function onEnded() {
 function onError(e) {
   console.error('音频播放错误:', e)
   store.isPlaying = false
+  store.notifyError('音频播放失败，请检查文件是否已被移动或权限被收回')
 }
 
 // 定时保存进度
@@ -597,6 +608,12 @@ function getDisplayName(filename) {
         </div>
       </div>
     </div>
+
+    <AudioErrorDialog
+      :visible="store.errorVisible"
+      :message="store.errorMessage"
+      @close="store.clearError()"
+    />
   </div>
 </template>
 

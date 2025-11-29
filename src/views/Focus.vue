@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/gameStore'
 import { useAudioStore } from '../stores/audioStore'
 import { Play, Square, RotateCcw, Check, Star, Sparkles, CloudSun, Headphones, SkipBack, SkipForward } from 'lucide-vue-next'
+import AudioErrorDialog from '../components/AudioErrorDialog.vue'
 
 const store = useAppStore()
 const audioStore = useAudioStore()
@@ -142,6 +143,7 @@ async function loadMiniTrack() {
     }
   } catch (e) {
     console.error('迷你听书加载失败', e)
+    audioStore.notifyError(`迷你播放器加载失败：${e.message || e}`)
   } finally {
     audioLoading.value = false
   }
@@ -170,6 +172,7 @@ async function toggleMiniPlay() {
         audioStore.isPlaying = true
       } catch (err) {
         console.error('播放失败', err)
+        audioStore.notifyError(`播放失败：${err.message || err}`)
       }
     }
   }
@@ -200,6 +203,11 @@ async function restoreAudio() {
   if (result.success && audioStore.playlist.length > 0) {
     ensureCurrentAudioIndex()
     await loadMiniTrack()
+  } else if (!result.success) {
+    const msg = result.error === 'no-native-cache'
+      ? '未找到可恢复的音频，请重新选择目录'
+      : (result.error || '恢复上次播放失败，请重新选择目录')
+    audioStore.notifyError(msg)
   }
 }
 
@@ -228,6 +236,7 @@ async function onAudioEnded() {
 function onAudioError(e) {
   console.error('音频播放错误', e)
   audioStore.isPlaying = false
+  audioStore.notifyError('音频播放失败，请检查文件是否还在原位置')
 }
 
 watch(() => audioStore.currentIndex, async (newVal, oldVal) => {
@@ -552,6 +561,12 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <AudioErrorDialog 
+      :visible="audioStore.errorVisible" 
+      :message="audioStore.errorMessage" 
+      @close="audioStore.clearError()" 
+    />
   </div>
 </template>
 

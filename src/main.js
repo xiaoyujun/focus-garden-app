@@ -10,6 +10,7 @@ import Focus from './views/Focus.vue'
 import Todos from './views/Todos.vue'
 import Settings from './views/Settings.vue'
 import AudioPlayer from './views/AudioPlayer.vue'
+import OnlinePlayer from './views/OnlinePlayer.vue'
 
 const routes = [
   { path: '/', component: Garden },
@@ -17,6 +18,7 @@ const routes = [
   { path: '/todos', component: Todos },
   { path: '/settings', component: Settings },
   { path: '/audio', component: AudioPlayer },
+  { path: '/online', component: OnlinePlayer },
 ]
 
 const router = createRouter({

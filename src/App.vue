@@ -1,6 +1,6 @@
 <script setup>
 import { useRoute } from 'vue-router'
-import { Flower2, Clock, ListTodo, Settings, Headphones } from 'lucide-vue-next'
+import { Flower2, Clock, ListTodo, Settings, Headphones, Globe } from 'lucide-vue-next'
 
 const route = useRoute()
 </script>
@@ -33,6 +33,10 @@ const route = useRoute()
 
         <router-link to="/audio" class="flex flex-col items-center p-2 text-farm-400 hover:text-nature-600 transition-colors" :class="{ '!text-nature-600': route.path === '/audio' }">
           <Headphones :size="24" stroke-width="2.5" />
+        </router-link>
+
+        <router-link to="/online" class="flex flex-col items-center p-2 text-farm-400 hover:text-nature-600 transition-colors" :class="{ '!text-nature-600': route.path === '/online' }">
+          <Globe :size="24" stroke-width="2.5" />
         </router-link>
 
         <router-link to="/settings" class="flex flex-col items-center p-2 text-farm-400 hover:text-nature-600 transition-colors" :class="{ '!text-nature-600': route.path === '/settings' }">

@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { Capacitor } from '@capacitor/core'
-import { Filesystem, Directory } from '@capacitor/filesystem'
+import { Filesystem } from '@capacitor/filesystem'
 import { FilePicker } from '@capawesome/capacitor-file-picker'
 
 const AUDIO_STORAGE_KEY = 'audiobook-player-data'
+const AUDIO_NATIVE_CACHE_LIMIT = 500 // 避免本地缓存过大
 
 // 检测运行平台
 const isNative = Capacitor.isNativePlatform()
@@ -22,9 +23,12 @@ export const useAudioStore = defineStore('audio', () => {
   const directoryName = ref('')      // 当前目录名称
   const directoryHandle = ref(null)  // 目录句柄（Web 端）
   const directoryPath = ref('')      // 目录路径（移动端）
+  const nativePlaylistCache = ref([]) // 移动端缓存的文件列表（仅保存必要信息）
   
   // 播放进度记忆（每个文件的播放位置）
   const progressMemory = ref({})     // { fileName: { time: 秒, updatedAt: ISO } }
+  const errorMessage = ref('')       // 最近的错误提示
+  const errorVisible = ref(false)    // 是否展示错误弹窗
 
   // ===== 计算属性 =====
   const currentTrack = computed(() => {
@@ -71,9 +75,10 @@ export const useAudioStore = defineStore('audio', () => {
         progressMemory.value = parsed.progressMemory ?? {}
         directoryName.value = parsed.directoryName ?? ''
         currentIndex.value = parsed.lastIndex ?? -1
+        nativePlaylistCache.value = parsed.nativePlaylistCache ?? []
         
         // 检查是否有保存的目录
-        if (parsed.directoryName) {
+        if (parsed.directoryName || nativePlaylistCache.value.length > 0) {
           hasSavedDirectory.value = true
         }
       }
@@ -86,12 +91,13 @@ export const useAudioStore = defineStore('audio', () => {
     try {
       const data = {
         volume: volume.value,
-        playbackRate: playbackRate.value,
-        playMode: playMode.value,
-        progressMemory: progressMemory.value,
-        directoryName: directoryName.value,
-        lastIndex: currentIndex.value
-      }
+      playbackRate: playbackRate.value,
+      playMode: playMode.value,
+      progressMemory: progressMemory.value,
+      directoryName: directoryName.value,
+      lastIndex: currentIndex.value,
+      nativePlaylistCache: nativePlaylistCache.value
+    }
       localStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(data))
     } catch (e) {
       console.error('保存音频设置失败:', e)
@@ -99,7 +105,7 @@ export const useAudioStore = defineStore('audio', () => {
   }
 
   // 监听变化自动保存
-  watch([volume, playbackRate, playMode, progressMemory, directoryName, currentIndex], saveToStorage, { deep: true })
+  watch([volume, playbackRate, playMode, progressMemory, directoryName, currentIndex, nativePlaylistCache], saveToStorage, { deep: true })
 
   // ===== IndexedDB 存储目录句柄（Web 端） =====
   const DB_NAME = 'audiobook-db'
@@ -169,7 +175,10 @@ export const useAudioStore = defineStore('audio', () => {
 
   // 恢复上次的目录（Web 端）
   async function restoreLastDirectory() {
-    if (isNative || isRestoring.value) return { success: false }
+    if (isRestoring.value) return { success: false }
+    if (isNative) {
+      return await restoreLastDirectoryNative()
+    }
     
     isRestoring.value = true
     try {
@@ -214,6 +223,70 @@ export const useAudioStore = defineStore('audio', () => {
       return { success: true, count: audioFiles.length }
     } catch (e) {
       console.error('恢复目录失败:', e)
+      notifyError(`恢复目录失败：${e.message || e}`)
+      return { success: false, error: e.message }
+    } finally {
+      isRestoring.value = false
+    }
+  }
+
+  // 恢复上次的目录（移动端）
+  async function restoreLastDirectoryNative() {
+    isRestoring.value = true
+    try {
+      if (!nativePlaylistCache.value.length) {
+        notifyError('没有可恢复的音频记录，请重新选择目录')
+        return { success: false, error: 'no-native-cache' }
+      }
+
+      const audioFiles = nativePlaylistCache.value
+        .slice(0, AUDIO_NATIVE_CACHE_LIMIT)
+        .map(file => {
+          if (!file?.name || !file?.path) return null
+          return {
+            name: file.name,
+            path: file.path,
+            url: Capacitor.convertFileSrc(file.path),
+            isNative: true
+          }
+        })
+        .filter(Boolean)
+
+      if (!audioFiles.length) {
+        notifyError('缓存的音频已失效，请重新选择目录')
+        return { success: false, error: 'empty-native-list' }
+      }
+
+      // 尝试验证文件可读性，不阻塞整体恢复
+      const verifiedFiles = []
+      for (const item of audioFiles) {
+        try {
+          await Filesystem.stat({ path: item.path })
+          verifiedFiles.push(item)
+        } catch (err) {
+          console.warn('文件不可用，已跳过:', item.name, err)
+        }
+      }
+
+      const finalList = verifiedFiles.length ? verifiedFiles : audioFiles
+      finalList.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }))
+      playlist.value = finalList
+      hasSavedDirectory.value = true
+
+      if (finalList.length && !directoryName.value) {
+        const parts = finalList[0].path.split('/')
+        directoryName.value = parts[parts.length - 2] || '已保存的音频'
+      }
+      if (finalList.length) {
+        directoryPath.value = finalList[0].path.split('/').slice(0, -1).join('/') || directoryPath.value
+      }
+
+      restoreLastPlayed(finalList)
+
+      return { success: true, count: finalList.length }
+    } catch (e) {
+      console.error('移动端恢复目录失败:', e)
+      notifyError(`恢复上次播放失败：${e.message || e}`)
       return { success: false, error: e.message }
     } finally {
       isRestoring.value = false
@@ -310,14 +383,20 @@ export const useAudioStore = defineStore('audio', () => {
         const firstPath = audioFiles[0].path
         const parts = firstPath.split('/')
         directoryName.value = parts[parts.length - 2] || '已选择的音频'
+        directoryPath.value = parts.slice(0, -1).join('/') || ''
       }
       
       playlist.value = audioFiles
+      nativePlaylistCache.value = audioFiles
+        .slice(0, AUDIO_NATIVE_CACHE_LIMIT)
+        .map(file => ({ name: file.name, path: file.path }))
+      hasSavedDirectory.value = true
       restoreLastPlayed(audioFiles)
       
       return { success: true, count: audioFiles.length }
     } catch (e) {
       console.error('选择文件失败:', e)
+      notifyError(`选择音频失败：${e.message || e}`)
       return { success: false, error: e.message }
     }
   }
@@ -354,6 +433,7 @@ export const useAudioStore = defineStore('audio', () => {
         track.url = URL.createObjectURL(file)
       } catch (e) {
         console.error('获取音频文件失败:', e)
+        notifyError(`加载音频失败：${e.message || e}`)
         return null
       }
     }
@@ -447,6 +527,9 @@ export const useAudioStore = defineStore('audio', () => {
     isPlaying.value = false
     directoryHandle.value = null
     directoryName.value = ''
+    directoryPath.value = ''
+    nativePlaylistCache.value = []
+    hasSavedDirectory.value = false
   }
 
   // 快进/快退
@@ -483,6 +566,17 @@ export const useAudioStore = defineStore('audio', () => {
     }
   }
 
+  // 错误提示控制
+  function notifyError(message) {
+    errorMessage.value = message || '发生未知错误'
+    errorVisible.value = true
+  }
+
+  function clearError() {
+    errorMessage.value = ''
+    errorVisible.value = false
+  }
+
   // 初始化
   loadFromStorage()
 
@@ -497,9 +591,13 @@ export const useAudioStore = defineStore('audio', () => {
     playbackRate,
     playMode,
     directoryName,
+    directoryPath,
     progressMemory,
     hasSavedDirectory,
     isRestoring,
+    nativePlaylistCache,
+    errorMessage,
+    errorVisible,
     
     // 计算属性
     currentTrack,
@@ -529,6 +627,8 @@ export const useAudioStore = defineStore('audio', () => {
     setVolume,
     setPlaybackRate,
     cyclePlaybackRate,
-    formatTime
+    formatTime,
+    notifyError,
+    clearError
   }
 })
