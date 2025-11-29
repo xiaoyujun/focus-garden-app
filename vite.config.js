@@ -43,6 +43,45 @@ export default defineConfig({
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Origin': 'https://www.bilibili.com'
         }
+      },
+      // 喜马拉雅API代理
+      '/api/ximalaya': {
+        target: 'https://www.ximalaya.com',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/ximalaya/, ''),
+        headers: {
+          'Referer': 'https://www.ximalaya.com',
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+        }
+      },
+      // 喜马拉雅移动端API
+      '/api/ximalaya-mobile': {
+        target: 'https://mobile.ximalaya.com',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/ximalaya-mobile/, ''),
+        headers: {
+          'User-Agent': 'ting_v6.6.90_c0_Android'
+        }
+      },
+      // 喜马拉雅登录API
+      '/api/ximalaya-passport': {
+        target: 'https://passport.ximalaya.com',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/ximalaya-passport/, ''),
+        headers: {
+          'Referer': 'https://www.ximalaya.com',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      },
+      // 蜻蜓FM API代理
+      '/api/qingting': {
+        target: 'https://search.qingting.fm',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/qingting/, ''),
+        headers: {
+          'Referer': 'https://www.qingting.fm',
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
+        }
       }
     },
   },

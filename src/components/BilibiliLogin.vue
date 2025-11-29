@@ -166,6 +166,7 @@ onUnmounted(() => {
           <img 
             v-if="authInfo.avatar" 
             :src="authInfo.avatar" 
+            referrerpolicy="no-referrer"
             class="w-20 h-20 rounded-full mx-auto mb-4 border-4 border-nature-100"
           />
           <div v-else class="w-20 h-20 rounded-full mx-auto mb-4 bg-nature-100 flex items-center justify-center">
@@ -213,7 +214,7 @@ onUnmounted(() => {
                 class="w-52 h-52 mx-auto bg-farm-50 rounded-xl flex items-center justify-center border-2 border-farm-100"
                 :class="{ 'opacity-50': isExpired }"
               >
-                <img v-if="qrcodeUrl" :src="qrcodeUrl" class="w-48 h-48" />
+                <img v-if="qrcodeUrl" :src="qrcodeUrl" referrerpolicy="no-referrer" class="w-48 h-48" />
                 <div v-else class="w-8 h-8 border-3 border-farm-200 border-t-nature-500 rounded-full animate-spin"></div>
               </div>
               

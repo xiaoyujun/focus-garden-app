@@ -9,11 +9,25 @@ import {
   extractBilibiliId 
 } from '../services/bilibiliService'
 import { 
+  searchAudio,
+  searchXimalaya,
+  getXimalayaAlbumTracks,
+  getXimalayaPlayUrl
+} from '../services/audioSourceService'
+import { 
   getAuthInfo, 
   isLoggedIn as checkIsLoggedIn,
   loadAuthFromStorage 
 } from '../services/bilibiliAuth'
+import { 
+  isLoggedIn as checkXimalayaLoggedIn,
+  isVip as checkXimalayaVip,
+  getAuthInfo as getXimalayaAuthInfo,
+  loadAuthFromStorage as loadXimalayaAuth,
+  getVipPlayUrl as getXimalayaVipPlayUrl
+} from '../services/ximalayaAuth'
 import BilibiliLogin from '../components/BilibiliLogin.vue'
+import XimalayaLogin from '../components/XimalayaLogin.vue'
 import { 
   Search, Play, Pause, SkipBack, SkipForward, 
   Volume2, VolumeX, Heart, HeartOff, Clock,
@@ -30,6 +44,7 @@ const searchQuery = ref('')
 const isSearching = ref(false)
 const searchResults = ref([])
 const searchError = ref('')
+const currentSearchSource = ref('bilibili')  // 当前搜索的源: bilibili | ximalaya | qingting
 
 const currentVideo = ref(null)       // 当前播放的视频信息
 const currentPlaylist = ref([])      // 当前播放列表
@@ -47,7 +62,13 @@ const playbackRate = ref(1)
 const showPlaylist = ref(false)
 const showSourceManager = ref(false)
 const showLoginModal = ref(false)
+const showXimalayaLoginModal = ref(false)
 const activeTab = ref('search')      // search | history | favorites
+
+// 喜马拉雅登录状态
+const isXimalayaLoggedIn = ref(false)
+const isXimalayaVip = ref(false)
+const ximalayaUserInfo = ref(null)
 
 // 书源管理状态
 const sourceManagerTab = ref('sources')  // sources | subscriptions | add
@@ -110,6 +131,24 @@ function refreshLoginStatus() {
 // 登录成功回调
 function onLoginSuccess() {
   refreshLoginStatus()
+  searchError.value = ''
+}
+
+// 刷新喜马拉雅登录状态
+function refreshXimalayaLoginStatus() {
+  loadXimalayaAuth()
+  isXimalayaLoggedIn.value = checkXimalayaLoggedIn()
+  isXimalayaVip.value = checkXimalayaVip()
+  if (isXimalayaLoggedIn.value) {
+    ximalayaUserInfo.value = getXimalayaAuthInfo()
+  } else {
+    ximalayaUserInfo.value = null
+  }
+}
+
+// 喜马拉雅登录成功回调
+function onXimalayaLoginSuccess() {
+  refreshXimalayaLoginStatus()
   searchError.value = ''
 }
 
@@ -235,33 +274,62 @@ async function handleSearch() {
   
   isSearching.value = true
   searchError.value = ''
+  searchResults.value = []
   
   try {
-    // 先检查是否是B站链接
-    const videoId = extractBilibiliId(searchQuery.value)
-    
-    if (videoId.bvid) {
-      // 直接解析视频
-      const videoInfo = await getVideoInfo(videoId.bvid)
-      searchResults.value = [{
-        bvid: videoInfo.bvid,
-        aid: videoInfo.aid,
-        title: videoInfo.title,
-        cover: videoInfo.cover,
-        duration: formatTime(videoInfo.duration),
-        author: videoInfo.owner.name,
-        mid: videoInfo.owner.mid,
-        play: videoInfo.stat.view,
-        description: videoInfo.desc
-      }]
-    } else {
-      // 搜索视频（带筛选参数）
-      const searchOptions = {
-        order: getOrderParam(),
-        duration: getDurationParam()
+    // 先检查是否是B站链接（只在B站源时检查）
+    if (currentSearchSource.value === 'bilibili') {
+      const videoId = extractBilibiliId(searchQuery.value)
+      
+      if (videoId.bvid) {
+        // 直接解析视频
+        const videoInfo = await getVideoInfo(videoId.bvid)
+        searchResults.value = [{
+          sourceType: 'bilibili',
+          bvid: videoInfo.bvid,
+          aid: videoInfo.aid,
+          title: videoInfo.title,
+          cover: videoInfo.cover,
+          duration: formatTime(videoInfo.duration),
+          author: videoInfo.owner.name,
+          mid: videoInfo.owner.mid,
+          play: videoInfo.stat.view,
+          description: videoInfo.desc
+        }]
+        sourceStore.addSearchHistory(searchQuery.value)
+        return
       }
-      const result = await searchVideos(buildSearchKeyword(), searchOptions)
-      searchResults.value = result.results
+    }
+    
+    // 根据当前源进行搜索
+    const keyword = buildSearchKeyword()
+    let result
+    
+    switch (currentSearchSource.value) {
+      case 'bilibili':
+        const searchOptions = {
+          order: getOrderParam(),
+          duration: getDurationParam()
+        }
+        result = await searchVideos(keyword, searchOptions)
+        searchResults.value = result.results.map(item => ({
+          ...item,
+          sourceType: 'bilibili'
+        }))
+        break
+        
+      case 'ximalaya':
+        result = await searchXimalaya(keyword)
+        searchResults.value = result.results
+        break
+        
+      case 'qingting':
+        result = await searchAudio(keyword, 'qingting')
+        searchResults.value = result.results
+        break
+        
+      default:
+        throw new Error('未知的搜索源')
     }
     
     sourceStore.addSearchHistory(searchQuery.value)
@@ -290,7 +358,115 @@ function resetFilter() {
   }
 }
 
-// 播放视频
+// 处理播放项点击（根据不同源类型）
+async function handlePlayItem(item) {
+  switch (item.sourceType) {
+    case 'bilibili':
+      await playVideo(item)
+      break
+    case 'ximalaya':
+      await playXimalayaAlbum(item)
+      break
+    case 'qingting':
+      searchError.value = '蜻蜓FM播放功能开发中...'
+      break
+    default:
+      searchError.value = '不支持的源类型'
+  }
+}
+
+// 播放喜马拉雅专辑
+async function playXimalayaAlbum(album) {
+  isLoading.value = true
+  searchError.value = ''
+  
+  try {
+    // 获取专辑章节列表
+    const tracksData = await getXimalayaAlbumTracks(album.albumId)
+    
+    if (!tracksData.tracks.length) {
+      throw new Error('该专辑暂无可播放章节')
+    }
+    
+    currentVideo.value = {
+      title: album.title,
+      cover: album.cover,
+      owner: { name: album.author },
+      sourceType: 'ximalaya',
+      albumId: album.albumId
+    }
+    
+    // 转换为播放列表格式
+    currentPlaylist.value = tracksData.tracks.map(track => ({
+      title: track.title,
+      cid: track.id,
+      duration: track.duration,
+      sourceType: 'ximalaya',
+      trackId: track.id
+    }))
+    
+    currentIndex.value = 0
+    
+    // 播放第一个
+    await loadAndPlayXimalaya(0)
+    
+    // 添加到播放历史
+    sourceStore.addPlayHistory({
+      id: album.id,
+      type: 'ximalaya',
+      albumId: album.albumId,
+      title: album.title,
+      cover: album.cover,
+      author: album.author
+    })
+  } catch (error) {
+    console.error('喜马拉雅播放失败:', error)
+    searchError.value = error.message || '播放失败'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 加载并播放喜马拉雅音频
+async function loadAndPlayXimalaya(index) {
+  if (index < 0 || index >= currentPlaylist.value.length) return
+  
+  isLoading.value = true
+  currentIndex.value = index
+  
+  try {
+    const track = currentPlaylist.value[index]
+    let audioUrl
+    
+    // 如果已登录喜马拉雅，使用VIP接口获取更好的音质
+    if (isXimalayaLoggedIn.value) {
+      try {
+        audioUrl = await getXimalayaVipPlayUrl(track.trackId)
+      } catch (e) {
+        console.warn('VIP接口失败，尝试普通接口:', e)
+        audioUrl = await getXimalayaPlayUrl(track.trackId)
+      }
+    } else {
+      audioUrl = await getXimalayaPlayUrl(track.trackId)
+    }
+    
+    if (audioRef.value) {
+      audioRef.value.src = audioUrl
+      audioRef.value.volume = volume.value
+      audioRef.value.playbackRate = playbackRate.value
+      await audioRef.value.play()
+      isPlaying.value = true
+    }
+  } catch (error) {
+    console.error('播放失败:', error)
+    const tip = isXimalayaLoggedIn.value ? '' : '，可尝试登录喜马拉雅VIP'
+    searchError.value = (error.message || '播放失败') + tip
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 播放B站视频
 async function playVideo(video) {
   isLoading.value = true
   
@@ -322,8 +498,23 @@ async function playVideo(video) {
   }
 }
 
-// 加载并播放指定索引
+// 加载并播放指定索引（根据源类型自动选择）
 async function loadAndPlay(index) {
+  if (index < 0 || index >= currentPlaylist.value.length) return
+  
+  const track = currentPlaylist.value[index]
+  
+  // 根据源类型调用不同的播放函数
+  if (track.sourceType === 'ximalaya') {
+    await loadAndPlayXimalaya(index)
+  } else {
+    // 默认B站播放
+    await loadAndPlayBilibili(index)
+  }
+}
+
+// 加载并播放B站音频
+async function loadAndPlayBilibili(index) {
   if (index < 0 || index >= currentPlaylist.value.length) return
   
   isLoading.value = true
@@ -522,6 +713,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyboard)
   // 初始化登录状态
   refreshLoginStatus()
+  refreshXimalayaLoginStatus()
 })
 
 onUnmounted(() => {
@@ -557,6 +749,7 @@ onUnmounted(() => {
           <img 
             v-if="isLoggedIn && userInfo?.avatar" 
             :src="userInfo.avatar" 
+            referrerpolicy="no-referrer"
             class="w-5 h-5 rounded-full"
           />
           <User v-else :size="18" />
@@ -572,13 +765,76 @@ onUnmounted(() => {
     </header>
 
     <main class="px-4 max-w-md mx-auto">
+      <!-- 源选择器 -->
+      <div class="flex gap-2 mb-3 overflow-x-auto pb-1">
+        <button 
+          v-for="source in sourceStore.enabledSources" 
+          :key="source.id"
+          @click="currentSearchSource = source.type; searchResults = []"
+          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap"
+          :class="currentSearchSource === source.type 
+            ? 'bg-nature-500 text-white shadow-md' 
+            : 'bg-white text-farm-600 border border-farm-200 hover:border-nature-300'"
+        >
+          <span>{{ source.icon }}</span>
+          {{ source.name }}
+        </button>
+      </div>
+
+      <!-- 登录提示条 -->
+      <div 
+        v-if="currentSearchSource === 'ximalaya'" 
+        class="mb-3 px-3 py-2 rounded-lg text-sm flex items-center justify-between"
+        :class="isXimalayaLoggedIn ? 'bg-orange-50 text-orange-700' : 'bg-farm-100 text-farm-600'"
+      >
+        <div class="flex items-center gap-2">
+          <span v-if="isXimalayaLoggedIn && isXimalayaVip" class="flex items-center gap-1">
+            <span class="text-yellow-500">👑</span>
+            {{ ximalayaUserInfo?.userName }} (VIP)
+          </span>
+          <span v-else-if="isXimalayaLoggedIn">
+            {{ ximalayaUserInfo?.userName }}
+          </span>
+          <span v-else>登录喜马拉雅可享受VIP音质</span>
+        </div>
+        <button 
+          @click="showXimalayaLoginModal = true"
+          class="px-3 py-1 rounded-lg text-xs font-medium"
+          :class="isXimalayaLoggedIn ? 'bg-orange-100 hover:bg-orange-200' : 'bg-orange-500 text-white hover:bg-orange-600'"
+        >
+          {{ isXimalayaLoggedIn ? '管理' : '登录' }}
+        </button>
+      </div>
+      
+      <!-- B站登录提示条 -->
+      <div 
+        v-if="currentSearchSource === 'bilibili'" 
+        class="mb-3 px-3 py-2 rounded-lg text-sm flex items-center justify-between"
+        :class="isLoggedIn ? 'bg-pink-50 text-pink-700' : 'bg-farm-100 text-farm-600'"
+      >
+        <div class="flex items-center gap-2">
+          <span v-if="isLoggedIn">
+            <img v-if="userInfo?.avatar" :src="userInfo.avatar" referrerpolicy="no-referrer" class="w-5 h-5 rounded-full inline mr-1" />
+            {{ userInfo?.userName }}
+          </span>
+          <span v-else>登录B站可搜索更多内容</span>
+        </div>
+        <button 
+          @click="showLoginModal = true"
+          class="px-3 py-1 rounded-lg text-xs font-medium"
+          :class="isLoggedIn ? 'bg-pink-100 hover:bg-pink-200' : 'bg-pink-500 text-white hover:bg-pink-600'"
+        >
+          {{ isLoggedIn ? '管理' : '登录' }}
+        </button>
+      </div>
+
       <!-- 搜索框 -->
       <div class="relative mb-4">
         <input 
           v-model="searchQuery"
           @keyup.enter="handleSearch"
           type="text"
-          placeholder="搜索有声书、输入B站链接..."
+          :placeholder="currentSearchSource === 'bilibili' ? '搜索有声书、输入B站链接...' : '搜索有声书、播客...'"
           class="w-full px-4 py-3 pl-12 bg-white rounded-xl border border-farm-200 focus:border-nature-400 focus:ring-2 focus:ring-nature-100 outline-none transition-all"
         />
         <Search :size="20" class="absolute left-4 top-1/2 -translate-y-1/2 text-farm-400" />
@@ -615,7 +871,7 @@ onUnmounted(() => {
           <button 
             v-for="opt in filterOptions.type" 
             :key="opt.value"
-            @click="searchFilter.type = opt.value; handleSearch()"
+            @click="searchFilter.type = opt.value; searchQuery.trim() && handleSearch()"
             class="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap"
             :class="searchFilter.type === opt.value ? 'bg-nature-100 text-nature-700 border border-nature-300' : 'bg-farm-50 text-farm-600 hover:bg-farm-100'"
           >
@@ -758,19 +1014,38 @@ onUnmounted(() => {
 
         <!-- 搜索结果列表 -->
         <div 
-          v-for="video in searchResults" 
-          :key="video.bvid"
-          @click="playVideo(video)"
+          v-for="item in searchResults" 
+          :key="item.bvid || item.id"
+          @click="handlePlayItem(item)"
           class="flex gap-3 p-3 bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer"
         >
-          <img 
-            :src="video.cover" 
-            :alt="video.title"
-            class="w-24 h-16 object-cover rounded-lg flex-shrink-0"
-          />
+          <div class="relative flex-shrink-0">
+            <img 
+              :src="item.cover" 
+              :alt="item.title"
+              referrerpolicy="no-referrer"
+              class="w-24 h-16 object-cover rounded-lg"
+            />
+            <!-- 源标识 -->
+            <span 
+              class="absolute bottom-1 left-1 px-1.5 py-0.5 text-xs rounded text-white"
+              :class="{
+                'bg-pink-500': item.sourceType === 'bilibili',
+                'bg-orange-500': item.sourceType === 'ximalaya',
+                'bg-green-500': item.sourceType === 'qingting'
+              }"
+            >
+              {{ item.sourceType === 'bilibili' ? 'B站' : item.sourceType === 'ximalaya' ? '喜马' : '蜻蜓' }}
+            </span>
+          </div>
           <div class="flex-1 min-w-0">
-            <h3 class="font-medium text-farm-800 line-clamp-2 text-sm">{{ video.title }}</h3>
-            <p class="text-xs text-farm-400 mt-1">{{ video.author }} · {{ video.duration }}</p>
+            <h3 class="font-medium text-farm-800 line-clamp-2 text-sm">{{ item.title }}</h3>
+            <p class="text-xs text-farm-400 mt-1">
+              {{ item.author }}
+              <span v-if="item.duration"> · {{ item.duration }}</span>
+              <span v-if="item.trackCount"> · {{ item.trackCount }}集</span>
+            </p>
+            <p v-if="item.category" class="text-xs text-nature-500 mt-0.5">{{ item.category }}</p>
           </div>
         </div>
 
@@ -799,6 +1074,7 @@ onUnmounted(() => {
             v-if="item.cover"
             :src="item.cover" 
             :alt="item.title"
+            referrerpolicy="no-referrer"
             class="w-16 h-12 object-cover rounded-lg flex-shrink-0"
           />
           <div class="flex-1 min-w-0">
@@ -822,6 +1098,7 @@ onUnmounted(() => {
             v-if="item.cover"
             :src="item.cover" 
             :alt="item.title"
+            referrerpolicy="no-referrer"
             @click="playFromFavorite(item)"
             class="w-16 h-12 object-cover rounded-lg flex-shrink-0 cursor-pointer"
           />
@@ -864,6 +1141,7 @@ onUnmounted(() => {
           <img 
             v-if="currentVideo?.cover"
             :src="currentVideo.cover"
+            referrerpolicy="no-referrer"
             class="w-12 h-12 rounded-lg object-cover"
           />
           <div class="flex-1 min-w-0">
@@ -1185,11 +1463,18 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- 登录弹窗 -->
+    <!-- B站登录弹窗 -->
     <BilibiliLogin 
       v-if="showLoginModal"
       @close="showLoginModal = false"
       @login-success="onLoginSuccess"
+    />
+
+    <!-- 喜马拉雅登录弹窗 -->
+    <XimalayaLogin 
+      v-if="showXimalayaLoginModal"
+      @close="showXimalayaLoginModal = false"
+      @login-success="onXimalayaLoginSuccess"
     />
   </div>
 </template>

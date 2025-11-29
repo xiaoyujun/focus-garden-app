@@ -32,43 +32,31 @@ const SOURCE_STORAGE_KEY = 'audio-sources-data'
 // 内置源模板
 const BUILTIN_SOURCES = [
   {
-    id: 'bilibili-audiobook',
-    name: 'B站有声书',
+    id: 'bilibili',
+    name: 'B站',
     type: 'bilibili',
     baseUrl: 'https://www.bilibili.com',
     enabled: true,
     icon: '📺',
-    description: '搜索B站上的有声小说和音频内容',
-    config: {
-      searchKeywords: ['有声小说', '有声书', '听书'],
-      preferAudioOnly: true // 优先获取音频流
-    }
+    description: '搜索B站有声书、音乐、播客等内容'
   },
   {
-    id: 'bilibili-music',
-    name: 'B站音乐',
-    type: 'bilibili',
-    baseUrl: 'https://www.bilibili.com',
+    id: 'ximalaya',
+    name: '喜马拉雅',
+    type: 'ximalaya',
+    baseUrl: 'https://www.ximalaya.com',
     enabled: true,
-    icon: '🎵',
-    description: '搜索B站上的音乐内容',
-    config: {
-      searchKeywords: ['音乐', '歌曲'],
-      preferAudioOnly: true
-    }
+    icon: '🏔️',
+    description: '海量有声书、相声评书、儿童故事'
   },
   {
-    id: 'bilibili-podcast',
-    name: 'B站播客',
-    type: 'bilibili',
-    baseUrl: 'https://www.bilibili.com',
+    id: 'qingting',
+    name: '蜻蜓FM',
+    type: 'qingting',
+    baseUrl: 'https://www.qingting.fm',
     enabled: true,
-    icon: '🎙️',
-    description: '搜索B站上的播客和知识分享',
-    config: {
-      searchKeywords: ['播客', '知识分享', '脱口秀'],
-      preferAudioOnly: true
-    }
+    icon: '🦋',
+    description: '电台、有声书、播客内容'
   }
 ]
 
