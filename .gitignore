@@ -1,0 +1,29 @@
+# 依赖
+node_modules/
+
+# 构建输出
+dist/
+
+# 本地环境变量
+.env
+.env.local
+.env.*.local
+
+# 日志
+*.log
+npm-debug.log*
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Capacitor
+android/
+ios/
+.capacitor/
+
+# 系统文件
+Thumbs.db
