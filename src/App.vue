@@ -7,10 +7,17 @@ const route = useRoute()
 
 <template>
   <div class="min-h-screen bg-farm-50 pb-24">
-    <!-- 主要内容区 -->
-    <router-view v-slot="{ Component }">
+    <!-- 主要内容区域，在线听书页保持保活，切页不打断播放 -->
+    <router-view v-slot="{ Component, route: currentRoute }">
       <transition name="fade" mode="out-in">
-        <component :is="Component" />
+        <component 
+          v-if="!(currentRoute.meta && currentRoute.meta.keepAlive)" 
+          :is="Component" 
+          :key="currentRoute.fullPath"
+        />
+        <KeepAlive v-else include="OnlinePlayer">
+          <component :is="Component" />
+        </KeepAlive>
       </transition>
     </router-view>
 

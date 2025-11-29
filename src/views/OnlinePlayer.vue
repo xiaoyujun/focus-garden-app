@@ -26,6 +26,11 @@ import {
   loadAuthFromStorage as loadXimalayaAuth,
   getVipPlayUrl as getXimalayaVipPlayUrl
 } from '../services/ximalayaAuth'
+import { 
+  searchWithSource as searchThirdParty,
+  getBookChapters,
+  getChapterAudioUrl
+} from '../services/thirdPartySourceService'
 import BilibiliLogin from '../components/BilibiliLogin.vue'
 import XimalayaLogin from '../components/XimalayaLogin.vue'
 import { 
@@ -37,6 +42,8 @@ import {
   Filter, SlidersHorizontal
 } from 'lucide-vue-next'
 
+defineOptions({ name: 'OnlinePlayer' })
+
 const sourceStore = useSourceStore()
 
 // ===== 状态 =====
@@ -44,7 +51,8 @@ const searchQuery = ref('')
 const isSearching = ref(false)
 const searchResults = ref([])
 const searchError = ref('')
-const currentSearchSource = ref('bilibili')  // 当前搜索的源: bilibili | ximalaya | qingting
+const currentSearchSource = ref('bilibili')  // 当前搜索的源类型
+const currentSourceObject = ref(null)        // 当前选中的源对象（用于第三方源）
 
 const currentVideo = ref(null)       // 当前播放的视频信息
 const currentPlaylist = ref([])      // 当前播放列表
@@ -57,6 +65,11 @@ const currentTime = ref(0)
 const duration = ref(0)
 const volume = ref(1)
 const playbackRate = ref(1)
+const progressMap = ref({})
+const PROGRESS_STORAGE_KEY = 'audio-progress-map'
+const PROGRESS_SAVE_INTERVAL = 5000
+let lastProgressSave = 0
+let pendingSeek = null
 
 // UI 状态
 const showPlaylist = ref(false)
@@ -227,6 +240,89 @@ function formatTime(seconds) {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
+// 播放进度存取
+function loadProgressFromStorage() {
+  try {
+    const data = localStorage.getItem(PROGRESS_STORAGE_KEY)
+    if (data) {
+      progressMap.value = JSON.parse(data)
+    }
+  } catch (e) {
+    console.error('加载播放进度失败:', e)
+  }
+}
+
+function saveProgressToStorage() {
+  try {
+    localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progressMap.value))
+  } catch (e) {
+    console.error('保存播放进度失败:', e)
+  }
+}
+
+function getTrackKey(track) {
+  if (!track) return ''
+  if (track.sourceType === 'ximalaya') {
+    return `ximalaya:${track.trackId || track.id}`
+  }
+  if (track.sourceType === 'qingting') {
+    return `qingting:${track.id || track.channelId || track.title || 'unknown'}`
+  }
+  if (track.sourceType === 'thirdparty') {
+    // 使用 sourceId + chapterUrl 作为唯一标识
+    const sourceId = track.sourceId || 'unknown'
+    const chapterId = track.cid || track.chapterUrl || track.title || 'unknown'
+    return `thirdparty:${sourceId}:${chapterId}`
+  }
+  const bvid = track.bvid || currentVideo.value?.bvid || track.id || 'unknown'
+  const cid = track.cid || track.page || '0'
+  return `bilibili:${bvid}:${cid}`
+}
+
+function restoreProgressForTrack(track) {
+  if (!audioRef.value) return
+  const key = getTrackKey(track)
+  const saved = key ? progressMap.value[key] : null
+  if (!saved || !saved.position) return
+  const target = Math.min(saved.position, audioRef.value.duration || saved.duration || saved.position)
+  pendingSeek = target
+  if (audioRef.value.readyState >= 1) {
+    audioRef.value.currentTime = target
+    pendingSeek = null
+  }
+}
+
+function persistProgress(force = false) {
+  const track = currentTrack.value
+  if (!track || !audioRef.value) return
+  const now = Date.now()
+  if (!force && now - lastProgressSave < PROGRESS_SAVE_INTERVAL) return
+  const key = getTrackKey(track)
+  if (!key) return
+  progressMap.value = {
+    ...progressMap.value,
+    [key]: {
+      position: Math.floor(audioRef.value.currentTime || 0),
+      duration: Math.floor(audioRef.value.duration || duration.value || 0),
+      updatedAt: new Date().toISOString(),
+      title: track.title,
+      sourceType: track.sourceType || 'bilibili'
+    }
+  }
+  lastProgressSave = now
+  saveProgressToStorage()
+}
+
+function clearTrackProgress(track) {
+  const key = getTrackKey(track)
+  if (key && progressMap.value[key]) {
+    const next = { ...progressMap.value }
+    delete next[key]
+    progressMap.value = next
+    saveProgressToStorage()
+  }
+}
+
 // 构建筛选后的搜索关键词
 function buildSearchKeyword() {
   let keyword = searchQuery.value.trim()
@@ -328,6 +424,15 @@ async function handleSearch() {
         searchResults.value = result.results
         break
         
+      case 'thirdparty':
+        // 第三方书源搜索
+        if (!currentSourceObject.value) {
+          throw new Error('请先选择一个书源')
+        }
+        result = await searchThirdParty(currentSourceObject.value, keyword)
+        searchResults.value = result.results
+        break
+        
       default:
         throw new Error('未知的搜索源')
     }
@@ -370,8 +475,115 @@ async function handlePlayItem(item) {
     case 'qingting':
       searchError.value = '蜻蜓FM播放功能开发中...'
       break
+    case 'thirdparty':
+      await playThirdPartyBook(item)
+      break
     default:
       searchError.value = '不支持的源类型'
+  }
+}
+
+// 切换搜索源
+function switchSource(source) {
+  currentSourceObject.value = source
+  currentSearchSource.value = source.type
+  searchResults.value = []
+}
+
+// 播放第三方书源的书籍
+async function playThirdPartyBook(book) {
+  isLoading.value = true
+  searchError.value = ''
+  
+  try {
+    // 找到对应的书源配置
+    const source = sourceStore.sources.find(s => s.id === book.sourceId) || currentSourceObject.value
+    
+    if (!source) {
+      throw new Error('找不到对应的书源配置')
+    }
+    
+    // 获取章节列表
+    const chaptersData = await getBookChapters(source, book)
+    
+    if (!chaptersData.chapters.length) {
+      throw new Error('该书籍暂无可播放章节')
+    }
+    
+    currentVideo.value = {
+      title: book.title,
+      cover: book.cover,
+      owner: { name: book.author || book.artist || source.name },
+      sourceType: 'thirdparty',
+      sourceId: book.sourceId,
+      bookUrl: book.bookUrl
+    }
+    
+    // 转换为播放列表格式
+    currentPlaylist.value = chaptersData.chapters.map(chapter => ({
+      title: chapter.title,
+      cid: chapter.id,
+      sourceType: 'thirdparty',
+      chapterUrl: chapter.chapterUrl,
+      sourceId: book.sourceId
+    }))
+    
+    currentIndex.value = 0
+    
+    // 播放第一个
+    await loadAndPlayThirdParty(0)
+    
+    // 添加到播放历史
+    sourceStore.addPlayHistory({
+      id: book.id,
+      type: 'thirdparty',
+      title: book.title,
+      cover: book.cover,
+      author: book.author || book.artist,
+      sourceId: book.sourceId,
+      bookUrl: book.bookUrl
+    })
+  } catch (error) {
+    console.error('第三方书源播放失败:', error)
+    searchError.value = error.message || '播放失败'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 加载并播放第三方书源的音频
+async function loadAndPlayThirdParty(index) {
+  if (index < 0 || index >= currentPlaylist.value.length) return
+  
+  isLoading.value = true
+  currentIndex.value = index
+  
+  try {
+    const track = currentPlaylist.value[index]
+    
+    // 找到对应的书源配置
+    const source = sourceStore.sources.find(s => s.id === track.sourceId) || currentSourceObject.value
+    
+    if (!source) {
+      throw new Error('找不到对应的书源配置')
+    }
+    
+    // 获取音频地址
+    const audioUrl = await getChapterAudioUrl(source, track)
+    
+    if (audioRef.value) {
+      audioRef.value.src = audioUrl
+      audioRef.value.volume = volume.value
+      audioRef.value.playbackRate = playbackRate.value
+      restoreProgressForTrack(track)
+      await audioRef.value.play()
+      isPlaying.value = true
+    }
+  } catch (error) {
+    console.error('播放失败:', error)
+    searchError.value = error.message || '获取音频地址失败'
+  } finally {
+    isLoading.value = false
   }
 }
 
@@ -454,6 +666,7 @@ async function loadAndPlayXimalaya(index) {
       audioRef.value.src = audioUrl
       audioRef.value.volume = volume.value
       audioRef.value.playbackRate = playbackRate.value
+      restoreProgressForTrack(track)
       await audioRef.value.play()
       isPlaying.value = true
     }
@@ -476,7 +689,10 @@ async function playVideo(video) {
     const series = await getVideoSeries(video.bvid)
     
     currentVideo.value = videoInfo
-    currentPlaylist.value = series.items
+    currentPlaylist.value = series.items.map(item => ({
+      ...item,
+      sourceType: 'bilibili'
+    }))
     currentIndex.value = 0
     
     // 开始播放第一个
@@ -501,12 +717,15 @@ async function playVideo(video) {
 // 加载并播放指定索引（根据源类型自动选择）
 async function loadAndPlay(index) {
   if (index < 0 || index >= currentPlaylist.value.length) return
-  
+
+  persistProgress(true)
   const track = currentPlaylist.value[index]
   
   // 根据源类型调用不同的播放函数
   if (track.sourceType === 'ximalaya') {
     await loadAndPlayXimalaya(index)
+  } else if (track.sourceType === 'thirdparty') {
+    await loadAndPlayThirdParty(index)
   } else {
     // 默认B站播放
     await loadAndPlayBilibili(index)
@@ -528,6 +747,7 @@ async function loadAndPlayBilibili(index) {
       audioRef.value.src = audioUrl
       audioRef.value.volume = volume.value
       audioRef.value.playbackRate = playbackRate.value
+      restoreProgressForTrack(track)
       await audioRef.value.play()
       isPlaying.value = true
     }
@@ -654,16 +874,23 @@ function toggleFavorite() {
 function onTimeUpdate() {
   if (audioRef.value && !isDragging.value) {
     currentTime.value = audioRef.value.currentTime
+    persistProgress()
   }
 }
 
 function onDurationChange() {
   if (audioRef.value) {
     duration.value = audioRef.value.duration
+    if (pendingSeek !== null) {
+      const target = Math.min(pendingSeek, audioRef.value.duration || pendingSeek)
+      audioRef.value.currentTime = target
+      pendingSeek = null
+    }
   }
 }
 
 function onEnded() {
+  clearTrackProgress(currentTrack.value)
   // 自动下一曲
   if (currentIndex.value < currentPlaylist.value.length - 1) {
     nextTrack()
@@ -711,12 +938,14 @@ function handleKeyboard(e) {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyboard)
+  loadProgressFromStorage()
   // 初始化登录状态
   refreshLoginStatus()
   refreshXimalayaLoginStatus()
 })
 
 onUnmounted(() => {
+  persistProgress(true)
   window.removeEventListener('keydown', handleKeyboard)
 })
 </script>
@@ -730,6 +959,7 @@ onUnmounted(() => {
       @durationchange="onDurationChange"
       @ended="onEnded"
       preload="auto"
+      playsinline
       crossorigin="anonymous"
     />
 
@@ -770,15 +1000,27 @@ onUnmounted(() => {
         <button 
           v-for="source in sourceStore.enabledSources" 
           :key="source.id"
-          @click="currentSearchSource = source.type; searchResults = []"
+          @click="switchSource(source)"
           class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap"
-          :class="currentSearchSource === source.type 
+          :class="(currentSourceObject?.id === source.id) || (currentSearchSource === source.type && source.type !== 'thirdparty')
             ? 'bg-nature-500 text-white shadow-md' 
             : 'bg-white text-farm-600 border border-farm-200 hover:border-nature-300'"
         >
           <span>{{ source.icon }}</span>
           {{ source.name }}
         </button>
+      </div>
+
+      <!-- 第三方书源提示 -->
+      <div 
+        v-if="currentSearchSource === 'thirdparty' && currentSourceObject" 
+        class="mb-3 px-3 py-2 rounded-lg text-sm bg-purple-50 text-purple-700 flex items-center justify-between"
+      >
+        <div class="flex items-center gap-2">
+          <span>📚</span>
+          <span>当前源: {{ currentSourceObject.name }}</span>
+        </div>
+        <span class="text-xs text-purple-400">{{ currentSourceObject.group || '第三方书源' }}</span>
       </div>
 
       <!-- 登录提示条 -->
@@ -1032,10 +1274,11 @@ onUnmounted(() => {
               :class="{
                 'bg-pink-500': item.sourceType === 'bilibili',
                 'bg-orange-500': item.sourceType === 'ximalaya',
-                'bg-green-500': item.sourceType === 'qingting'
+                'bg-green-500': item.sourceType === 'qingting',
+                'bg-purple-500': item.sourceType === 'thirdparty'
               }"
             >
-              {{ item.sourceType === 'bilibili' ? 'B站' : item.sourceType === 'ximalaya' ? '喜马' : '蜻蜓' }}
+              {{ item.sourceType === 'bilibili' ? 'B站' : item.sourceType === 'ximalaya' ? '喜马' : item.sourceType === 'qingting' ? '蜻蜓' : (item.sourceName || '书源') }}
             </span>
           </div>
           <div class="flex-1 min-w-0">

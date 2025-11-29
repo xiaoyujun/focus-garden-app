@@ -126,6 +126,16 @@ export const useSourceStore = defineStore('source', () => {
     sources.value.filter(s => s.type === 'web')
   )
 
+  // 第三方书源（导入的书源）
+  const thirdPartySources = computed(() =>
+    sources.value.filter(s => s.type === 'thirdparty')
+  )
+
+  // 是否为内置源
+  function isBuiltinSource(id) {
+    return BUILTIN_SOURCES.some(s => s.id === id)
+  }
+
   // ===== 本地存储 =====
   function loadFromStorage() {
     try {
@@ -250,23 +260,31 @@ export const useSourceStore = defineStore('source', () => {
       
       for (const source of sourcesToImport) {
         try {
+          // 转换为统一格式
+          const normalizedSource = normalizeSource(source)
+          
           // 验证书源格式
-          if (!source.name) continue
+          if (!normalizedSource.name) continue
           
           // 生成唯一ID
-          source.id = source.id || `imported-${Date.now()}-${imported}`
+          normalizedSource.id = normalizedSource.id || `imported-${Date.now()}-${imported}`
           
           // 检查是否已存在
-          const existing = sources.value.find(s => s.id === source.id || s.name === source.name)
+          const existing = sources.value.find(s => 
+            s.id === normalizedSource.id || 
+            s.name === normalizedSource.name ||
+            (s.sourceUrl && s.sourceUrl === normalizedSource.sourceUrl)
+          )
+          
           if (existing) {
             // 更新已存在的源
-            updateSource(existing.id, source)
+            updateSource(existing.id, normalizedSource)
           } else {
-            addSource(source)
+            addSource(normalizedSource)
           }
           imported++
         } catch (e) {
-          console.error('导入书源失败:', source.name, e)
+          console.error('导入书源失败:', source.sourceName || source.bookSourceName || source.name, e)
         }
       }
       
@@ -274,6 +292,59 @@ export const useSourceStore = defineStore('source', () => {
     } catch (error) {
       console.error('从URL导入书源失败:', error)
       throw error
+    }
+  }
+
+  /**
+   * 标准化书源格式
+   * 支持"我的听书"格式和其他常见格式的转换
+   */
+  function normalizeSource(source) {
+    // 如果已经是标准格式
+    if (source.type && source.name) {
+      return { ...source, enabled: source.enabled !== false }
+    }
+    
+    // "我的听书"格式转换
+    if (source.sourceName || source.bookSourceName) {
+      return {
+        id: source.sourceUrl || source.bookSourceUrl || `source-${Date.now()}`,
+        name: source.sourceName || source.bookSourceName,
+        type: 'thirdparty',
+        sourceUrl: source.sourceUrl || source.bookSourceUrl,
+        enabled: source.enabled !== false,
+        icon: '📚',
+        description: source.sourceComment || source.sourceGroup || '第三方书源',
+        group: source.sourceGroup || source.bookSourceGroup || '未分类',
+        // 保留原始配置用于搜索和解析
+        searchUrl: source.searchUrl || source.ruleSearchUrl,
+        searchList: source.searchList || source.ruleSearchList,
+        searchName: source.searchName || source.ruleSearchName,
+        searchCover: source.searchCover || source.ruleSearchCover,
+        searchAuthor: source.searchAuthor || source.ruleSearchAuthor,
+        searchArtist: source.searchArtist || source.ruleSearchArtist,
+        searchIntro: source.searchIntro || source.ruleSearchIntro,
+        searchKind: source.searchKind || source.ruleSearchKind,
+        searchNoteUrl: source.searchNoteUrl || source.ruleSearchNoteUrl,
+        chapterList: source.chapterList || source.ruleChapterList,
+        chapterName: source.chapterName || source.ruleChapterName,
+        chapterUrl: source.chapterUrl || source.ruleChapterUrl,
+        audioUrlRule: source.audioUrlRule || source.ruleContentUrl || source.contentUrl,
+        // 保留完整原始数据
+        _raw: source
+      }
+    }
+    
+    // 其他格式，尝试识别
+    return {
+      id: source.id || source.url || `source-${Date.now()}`,
+      name: source.name || source.title || '未知书源',
+      type: 'thirdparty',
+      sourceUrl: source.url || source.baseUrl || '',
+      enabled: source.enabled !== false,
+      icon: '📚',
+      description: source.description || source.desc || '第三方书源',
+      _raw: source
     }
   }
 
@@ -287,12 +358,18 @@ export const useSourceStore = defineStore('source', () => {
       
       let imported = 0
       for (const source of sourcesToImport) {
-        if (!source.name) continue
-        source.id = source.id || `imported-${Date.now()}-${imported}`
+        // 转换为统一格式
+        const normalizedSource = normalizeSource(source)
         
-        const existing = sources.value.find(s => s.id === source.id)
+        if (!normalizedSource.name) continue
+        normalizedSource.id = normalizedSource.id || `imported-${Date.now()}-${imported}`
+        
+        const existing = sources.value.find(s => 
+          s.id === normalizedSource.id || 
+          s.name === normalizedSource.name
+        )
         if (!existing) {
-          addSource(source)
+          addSource(normalizedSource)
           imported++
         }
       }
@@ -466,6 +543,11 @@ export const useSourceStore = defineStore('source', () => {
     currentSource,
     bilibiliSources,
     webSources,
+    thirdPartySources,
+    
+    // 工具方法
+    isBuiltinSource,
+    normalizeSource,
     
     // 常量
     PRESET_SUBSCRIPTIONS,

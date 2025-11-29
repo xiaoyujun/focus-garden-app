@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { X, Key, LogOut, User, Crown, QrCode, RefreshCw } from 'lucide-vue-next'
+import { X, Key, LogOut, User, Crown, QrCode, RefreshCw, Wand2 } from 'lucide-vue-next'
+import CookieHelper from './CookieHelper.vue'
 import { 
   isLoggedIn, 
   isVip,
@@ -32,6 +33,9 @@ const qrcodeUrl = ref('')
 const qrcodeStatus = ref('')
 const isExpired = ref(false)
 const isGenerating = ref(false)
+
+// Cookie 助手弹窗
+const showCookieHelper = ref(false)
 
 function refreshStatus() {
   loadAuthFromStorage()
@@ -124,6 +128,14 @@ function switchLoginMode(mode) {
     // 已有二维码时重置过期提示
     isExpired.value = false
   }
+}
+
+// 处理从 Cookie 助手获取的 Cookie
+function handleCookieObtained(cookie) {
+  cookieInput.value = cookie
+  showCookieHelper.value = false
+  // 自动切换到 Cookie 登录模式
+  loginMode.value = 'cookie'
 }
 
 // 退出登录
@@ -280,20 +292,35 @@ function handleLogout() {
               {{ isLoading ? '登录中...' : '登录' }}
             </button>
             
+            <!-- 快捷获取 Cookie 按钮 -->
+            <button
+              @click="showCookieHelper = true"
+              class="mt-4 w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-medium hover:from-purple-600 hover:to-pink-600 flex items-center justify-center gap-2"
+            >
+              <Wand2 :size="18" />
+              一键获取 Cookie 工具
+            </button>
+            
             <!-- 获取 Cookie 说明 -->
             <div class="mt-4 p-3 bg-farm-50 rounded-xl">
-              <p class="text-xs font-medium text-farm-600 mb-2">📌 如何获取 Cookie？</p>
+              <p class="text-xs font-medium text-farm-600 mb-2">📌 手动获取 Cookie</p>
               <ol class="text-xs text-farm-500 space-y-1 list-decimal list-inside text-left">
-                <li>在电脑浏览器打开 ximalaya.com 并登录账号</li>
-                <li>按 F12 打开开发者工具</li>
-                <li>切换到「网络/Network」标签</li>
-                <li>刷新页面，点击任意请求</li>
-                <li>在「请求标头」中找到 Cookie 并复制</li>
+                <li>在电脑浏览器打开 ximalaya.com 并登录</li>
+                <li>按 F12 打开开发者工具 → 控制台</li>
+                <li>输入 <code class="bg-farm-200 px-1 rounded">copy(document.cookie)</code> 回车</li>
+                <li>回到此处粘贴</li>
               </ol>
             </div>
           </div>
         </div>
       </div>
     </div>
+    
+    <!-- Cookie 获取助手弹窗 -->
+    <CookieHelper 
+      v-if="showCookieHelper" 
+      @close="showCookieHelper = false"
+      @cookie-obtained="handleCookieObtained"
+    />
   </div>
 </template>

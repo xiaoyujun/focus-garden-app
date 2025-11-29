@@ -18,7 +18,12 @@ const routes = [
   { path: '/todos', component: Todos },
   { path: '/settings', component: Settings },
   { path: '/audio', component: AudioPlayer },
-  { path: '/online', component: OnlinePlayer },
+  { 
+    path: '/online', 
+    component: OnlinePlayer,
+    name: 'OnlinePlayer',
+    meta: { keepAlive: true } 
+  },
 ]
 
 const router = createRouter({

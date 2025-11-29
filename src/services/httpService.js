@@ -111,7 +111,46 @@ export async function httpPost(url, data = {}, options = {}) {
   }
 }
 
+/**
+ * 发起HTTP GET请求获取HTML内容
+ * @param {string} url - 请求URL
+ * @param {object} options - 请求选项
+ * @returns {Promise<string>}
+ */
+export async function httpGetHtml(url, options = {}) {
+  if (isNative) {
+    try {
+      const response = await CapacitorHttp.get({
+        url,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          ...options.headers
+        },
+        responseType: 'text'
+      })
+      
+      // 确保返回字符串
+      return typeof response.data === 'string' ? response.data : String(response.data)
+    } catch (error) {
+      console.error('CapacitorHttp HTML请求失败:', error)
+      throw error
+    }
+  } else {
+    const response = await fetch(url, {
+      headers: options.headers
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+    
+    return response.text()
+  }
+}
+
 export default {
   get: httpGet,
-  post: httpPost
+  post: httpPost,
+  getHtml: httpGetHtml
 }
