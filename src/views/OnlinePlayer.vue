@@ -688,43 +688,50 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- 播放列表弹窗 -->
+    <!-- 播放列表弹窗 - 全屏显示，从上往下排列 -->
     <div 
       v-if="showPlaylist" 
-      class="fixed inset-0 bg-farm-900/50 backdrop-blur-sm z-50 flex items-end"
-      @click.self="showPlaylist = false"
+      class="fixed inset-0 bg-white z-50 flex flex-col"
     >
-      <div class="bg-white w-full max-h-[70vh] rounded-t-3xl overflow-hidden">
-        <div class="flex items-center justify-between p-4 border-b border-farm-100">
-          <h3 class="font-bold text-farm-800">播放列表 ({{ currentPlaylist.length }})</h3>
-          <button @click="showPlaylist = false" class="p-2 rounded-full bg-farm-100 text-farm-500">
-            <X :size="18" />
-          </button>
-        </div>
-        <div class="overflow-y-auto max-h-[calc(70vh-60px)]">
-          <div 
-            v-for="(track, index) in currentPlaylist" 
-            :key="track.cid"
-            @click="loadAndPlay(index); showPlaylist = false"
-            class="flex items-center gap-3 px-4 py-3 hover:bg-farm-50 cursor-pointer border-b border-farm-50"
-            :class="{ 'bg-nature-50': index === currentIndex }"
-          >
-            <div class="w-8 h-8 rounded-lg bg-farm-100 flex items-center justify-center text-farm-400 flex-shrink-0">
-              <span v-if="index === currentIndex && isPlaying" class="flex gap-0.5">
-                <span class="w-1 h-3 bg-nature-500 rounded-full animate-pulse"></span>
-                <span class="w-1 h-3 bg-nature-500 rounded-full animate-pulse delay-100"></span>
-                <span class="w-1 h-3 bg-nature-500 rounded-full animate-pulse delay-200"></span>
-              </span>
-              <span v-else class="text-xs font-mono">{{ index + 1 }}</span>
-            </div>
-            <div class="flex-1 min-w-0">
-              <p 
-                class="text-sm truncate"
-                :class="index === currentIndex ? 'text-nature-600 font-medium' : 'text-farm-700'"
-              >
-                {{ track.title }}
-              </p>
-            </div>
+      <!-- 头部 -->
+      <div class="flex items-center justify-between p-4 border-b border-farm-100 bg-white sticky top-0">
+        <h3 class="font-bold text-farm-800">播放列表 ({{ currentPlaylist.length }})</h3>
+        <button @click="showPlaylist = false" class="p-2 rounded-full bg-farm-100 text-farm-500">
+          <X :size="18" />
+        </button>
+      </div>
+      
+      <!-- 列表内容 - 可滚动 -->
+      <div class="flex-1 overflow-y-auto pb-4">
+        <div 
+          v-for="(track, index) in currentPlaylist" 
+          :key="track.cid"
+          @click="loadAndPlay(index); showPlaylist = false"
+          class="flex items-center gap-3 px-4 py-3 hover:bg-farm-50 active:bg-farm-100 cursor-pointer border-b border-farm-50"
+          :class="{ 'bg-nature-50': index === currentIndex }"
+        >
+          <div class="w-10 h-10 rounded-lg bg-farm-100 flex items-center justify-center text-farm-400 flex-shrink-0">
+            <span v-if="index === currentIndex && isPlaying" class="flex gap-0.5">
+              <span class="w-1 h-4 bg-nature-500 rounded-full animate-pulse"></span>
+              <span class="w-1 h-4 bg-nature-500 rounded-full animate-pulse delay-100"></span>
+              <span class="w-1 h-4 bg-nature-500 rounded-full animate-pulse delay-200"></span>
+            </span>
+            <span v-else class="text-sm font-mono font-medium">{{ index + 1 }}</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p 
+              class="text-base truncate"
+              :class="index === currentIndex ? 'text-nature-600 font-medium' : 'text-farm-700'"
+            >
+              {{ track.title }}
+            </p>
+            <p v-if="track.duration" class="text-xs text-farm-400 mt-0.5">
+              {{ formatTime(track.duration) }}
+            </p>
+          </div>
+          <!-- 当前播放指示 -->
+          <div v-if="index === currentIndex" class="text-nature-500">
+            <Play :size="18" fill="currentColor" />
           </div>
         </div>
       </div>
