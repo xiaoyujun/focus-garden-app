@@ -76,13 +76,39 @@ const BUILTIN_SOURCES = [
 const PRESET_SUBSCRIPTIONS = [
   {
     name: '我的听书官方源',
-    url: 'https://wdts.top/api/sources/external_sources.json',
-    description: '我的听书App官方书源'
+    url: 'https://eprendre2.coding.net/p/tingshu/d/tingshu/git/raw/master/TingShuSources/external_sources.json',
+    description: '我的听书App官方书源（推荐）',
+    icon: '📚'
   },
   {
-    name: '英文有声书源',
-    url: 'https://wdts.top/api/sources/english_source.json',
-    description: '英文有声书源'
+    name: '听书镜像源',
+    url: 'https://wdts.top/api/sources/external_sources.json',
+    description: '官方源镜像，国内访问更快',
+    icon: '🔄'
+  },
+  {
+    name: '听书ASMR源',
+    url: 'https://kylo94.coding.net/p/tingshuyuan/d/UpdateJar/git/raw/master/kyloasmr.json',
+    description: 'ASMR相关有声内容',
+    icon: '🎧'
+  },
+  {
+    name: '懒人听书源',
+    url: 'https://gitee.com/elevenChen2019/tingshu_sources/raw/master/sources.json',
+    description: '懒人听书聚合源',
+    icon: '😴'
+  },
+  {
+    name: '视频影视源',
+    url: 'https://wdts.top/api/sources/videosource.json',
+    description: '影视视频源订阅',
+    icon: '🎬'
+  },
+  {
+    name: 'Legado RSS源',
+    url: 'https://raw.githubusercontent.com/gedoor/legado/master/app/src/main/assets/defaultData/rssSources.json',
+    description: 'Legado阅读App RSS订阅源',
+    icon: '📖'
   }
 ]
 

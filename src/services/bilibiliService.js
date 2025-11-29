@@ -404,16 +404,22 @@ export async function getVideoSeries(bvid) {
 /**
  * 搜索B站视频
  * @param {string} keyword - 搜索关键词
- * @param {number} page - 页码
+ * @param {object} options - 搜索选项
+ * @param {string} options.order - 排序方式: '' | 'click' | 'pubdate' | 'dm'
+ * @param {number} options.duration - 时长: 0不限 1-10分钟 2-30分钟 3-60分钟 4-60分钟以上
+ * @param {number} options.page - 页码
  * @returns {Promise<object>}
  */
-export async function searchVideos(keyword, page = 1) {
+export async function searchVideos(keyword, options = {}) {
   try {
+    const { order = '', duration = 0, page = 1 } = options
+    
     const params = new URLSearchParams({
       keyword,
       search_type: 'video',
       page,
-      order: 'totalrank'
+      order: order || 'totalrank',  // 默认综合排序
+      duration  // 时长筛选
     })
     
     // 搜索API使用专用代理（需要特殊headers）

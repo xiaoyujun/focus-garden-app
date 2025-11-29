@@ -6,6 +6,7 @@ import { FilePicker } from '@capawesome/capacitor-file-picker'
 
 const AUDIO_STORAGE_KEY = 'audiobook-player-data'
 const AUDIO_NATIVE_CACHE_LIMIT = 500 // 避免本地缓存过大
+const LAST_PLAYED_KEY = 'audiobook-last-played' // 记录最后播放的文件名
 
 // 检测运行平台
 const isNative = Capacitor.isNativePlatform()
@@ -401,46 +402,6 @@ export const useAudioStore = defineStore('audio', () => {
     }
   }
 
-  // 恢复上次播放位置
-  function restoreLastPlayed(audioFiles) {
-    if (audioFiles.length > 0) {
-      let lastPlayedIndex = 0
-      for (let i = 0; i < audioFiles.length; i++) {
-        const memory = progressMemory.value[audioFiles[i].name]
-        if (memory && memory.time > 0) {
-          lastPlayedIndex = i
-          break
-        }
-      }
-      currentIndex.value = lastPlayedIndex
-    }
-  }
-
-  // 获取当前音频的 URL
-  async function getCurrentTrackUrl() {
-    const track = currentTrack.value
-    if (!track) return null
-    
-    // 移动端已经有 URL
-    if (track.isNative) {
-      return track.url
-    }
-    
-    // Web 端需要从 handle 获取
-    if (!track.url) {
-      try {
-        const file = await track.handle.getFile()
-        track.url = URL.createObjectURL(file)
-      } catch (e) {
-        console.error('获取音频文件失败:', e)
-        notifyError(`加载音频失败：${e.message || e}`)
-        return null
-      }
-    }
-    
-    return track.url
-  }
-
   // ===== 播放控制 =====
   
   function setCurrentIndex(index) {
@@ -496,6 +457,45 @@ export const useAudioStore = defineStore('audio', () => {
     playMode.value = modes[(currentModeIndex + 1) % modes.length]
   }
 
+  // ===== 进度记忆相关 =====
+  
+  // 恢复上次播放位置
+  function restoreLastPlayed(audioFiles) {
+    if (audioFiles.length === 0) return
+    
+    // 优先找最后播放的文件
+    const lastPlayedName = localStorage.getItem(LAST_PLAYED_KEY)
+    if (lastPlayedName) {
+      const idx = audioFiles.findIndex(f => f.name === lastPlayedName)
+      if (idx >= 0) {
+        currentIndex.value = idx
+        return
+      }
+    }
+    // 否则找有播放记录的文件（按更新时间排序）
+    let lastPlayedIndex = 0
+    let latestTime = 0
+    for (let i = 0; i < audioFiles.length; i++) {
+      const memory = progressMemory.value[audioFiles[i].name]
+      if (memory && memory.updatedAt) {
+        const t = new Date(memory.updatedAt).getTime()
+        if (t > latestTime) {
+          latestTime = t
+          lastPlayedIndex = i
+        }
+      }
+    }
+    currentIndex.value = lastPlayedIndex
+  }
+
+  // 保存最后播放的文件名
+  function saveLastPlayed() {
+    const track = currentTrack.value
+    if (track) {
+      localStorage.setItem(LAST_PLAYED_KEY, track.name)
+    }
+  }
+
   // 记忆播放进度
   function saveProgress() {
     const track = currentTrack.value
@@ -504,12 +504,43 @@ export const useAudioStore = defineStore('audio', () => {
         time: currentTime.value,
         updatedAt: new Date().toISOString()
       }
+      saveLastPlayed()
     }
   }
 
-  // 获取记忆的播放进度
+  // 获取保存的进度
   function getSavedProgress(fileName) {
-    return progressMemory.value[fileName]?.time || 0
+    const memory = progressMemory.value[fileName]
+    return memory ? memory.time : 0
+  }
+
+  // 获取当前曲目的URL
+  async function getCurrentTrackUrl() {
+    const track = currentTrack.value
+    if (!track) return null
+    
+    // 移动端已经有URL
+    if (track.isNative && track.url) {
+      return track.url
+    }
+    
+    // Web端需要从handle获取
+    if (track.handle) {
+      try {
+        const file = await track.handle.getFile()
+        // 释放旧URL
+        if (track.url) {
+          URL.revokeObjectURL(track.url)
+        }
+        track.url = URL.createObjectURL(file)
+        return track.url
+      } catch (e) {
+        console.error('获取文件失败:', e)
+        return null
+      }
+    }
+    
+    return track.url || null
   }
 
   // 清除播放列表

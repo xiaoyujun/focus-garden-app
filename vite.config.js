@@ -30,7 +30,7 @@ export default defineConfig({
         headers: {
           'Referer': 'https://search.bilibili.com',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Cookie': 'buvid3=placeholder'
+          'Cookie': 'buvid3=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX12345infoc; b_nut=1700000000; _uuid=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX12345infoc'
         }
       },
       // B站主站API代理

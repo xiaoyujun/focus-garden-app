@@ -150,6 +150,12 @@ async function loadMiniTrack() {
 }
 
 async function toggleMiniPlay() {
+  // 如果没有播放列表但有保存的目录，先恢复
+  if (!audioStore.hasPlaylist && audioStore.hasSavedDirectory) {
+    await restoreAudio()
+    if (!audioStore.hasPlaylist) return
+  }
+  
   ensureCurrentAudioIndex()
   if (!audioStore.currentTrack || !miniAudioRef.value) return
 
@@ -344,11 +350,12 @@ onUnmounted(() => {
           
           <button 
             @click="toggleMiniPlay"
-            :disabled="audioLoading || !audioStore.hasPlaylist"
+            :disabled="audioLoading"
             class="w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-all disabled:opacity-60"
             :class="audioStore.isPlaying ? 'bg-amber-500 shadow-amber-200' : 'bg-nature-500 shadow-nature-200'"
           >
-            <Square v-if="audioStore.isPlaying" :size="22" fill="currentColor" />
+            <div v-if="audioLoading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+            <Square v-else-if="audioStore.isPlaying" :size="22" fill="currentColor" />
             <Play v-else :size="24" fill="currentColor" class="ml-1" />
           </button>
           

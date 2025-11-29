@@ -15,6 +15,7 @@ const store = useAudioStore()
 const audioRef = ref(null)
 const showPlaylist = ref(false)
 const isLoading = ref(false)
+const isAutoRestoring = ref(false) // 自动恢复中
 
 // 进度条拖动
 const isDragging = ref(false)
@@ -69,7 +70,18 @@ async function loadCurrentTrack() {
 
 // 播放/暂停
 async function togglePlay() {
+  // 如果没有播放列表但有保存的目录，先恢复
+  if (!store.hasPlaylist && store.hasSavedDirectory) {
+    await handleRestoreAndPlay()
+    return
+  }
+  
   if (!audioRef.value || !store.currentTrack) return
+  
+  // 如果音频没有加载，先加载
+  if (!audioRef.value.src) {
+    await loadCurrentTrack()
+  }
   
   if (store.isPlaying) {
     audioRef.value.pause()
@@ -81,9 +93,36 @@ async function togglePlay() {
       store.isPlaying = true
     } catch (e) {
       console.error('播放失败:', e)
-      store.notifyError(`播放失败：${e.message || e}`)
+      // 尝试重新加载
+      await loadCurrentTrack()
+      try {
+        await audioRef.value.play()
+        store.isPlaying = true
+      } catch (err) {
+        store.notifyError(`播放失败：${err.message || err}`)
+      }
     }
   }
+}
+
+// 恢复并播放
+async function handleRestoreAndPlay() {
+  isLoading.value = true
+  const result = await store.restoreLastDirectory()
+  if (result.success && store.playlist.length > 0) {
+    await loadCurrentTrack()
+    try {
+      await audioRef.value?.play()
+      store.isPlaying = true
+    } catch (e) {
+      console.error('自动播放失败:', e)
+    }
+  } else if (!result.success && result.error) {
+    store.notifyError(result.error === 'no-native-cache' 
+      ? '未找到可恢复的音频，请重新选择目录' 
+      : result.error)
+  }
+  isLoading.value = false
 }
 
 // 切换到指定曲目
@@ -218,20 +257,9 @@ async function handleSelectDirectory() {
   }
 }
 
-// 恢复上次的目录
+// 恢复上次的目录（并自动播放）
 async function handleRestoreDirectory() {
-  isLoading.value = true
-  const result = await store.restoreLastDirectory()
-  isLoading.value = false
-  
-  if (result.success && store.playlist.length > 0) {
-    await loadCurrentTrack()
-  } else if (!result.success) {
-    const msg = result.error === 'no-native-cache'
-      ? '未找到可恢复的音频，请重新选择目录'
-      : (result.error || '恢复上次播放失败，请重新选择目录')
-    store.notifyError(msg)
-  }
+  await handleRestoreAndPlay()
 }
 
 // 监听当前曲目变化
@@ -276,7 +304,7 @@ function onError(e) {
 // 定时保存进度
 let saveInterval = null
 
-onMounted(() => {
+onMounted(async () => {
   // 每30秒自动保存进度
   saveInterval = setInterval(() => {
     if (store.isPlaying && store.currentTrack) {
@@ -286,6 +314,16 @@ onMounted(() => {
   
   // 全局键盘快捷键
   window.addEventListener('keydown', handleKeyboard)
+  
+  // 自动恢复上次的播放列表（不自动播放）
+  if (!store.hasPlaylist && store.hasSavedDirectory) {
+    isAutoRestoring.value = true
+    const result = await store.restoreLastDirectory()
+    if (result.success && store.playlist.length > 0) {
+      await loadCurrentTrack()
+    }
+    isAutoRestoring.value = false
+  }
 })
 
 onUnmounted(() => {

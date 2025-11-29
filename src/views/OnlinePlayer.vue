@@ -19,7 +19,8 @@ import {
   Volume2, VolumeX, Heart, HeartOff, Clock,
   List, ChevronLeft, ChevronRight, Gauge, X,
   RotateCcw, RotateCw, Settings, Plus, Link,
-  Radio, BookOpen, RefreshCw, Trash2, Globe, User, LogIn
+  Radio, BookOpen, RefreshCw, Trash2, Globe, User, LogIn,
+  Filter, SlidersHorizontal
 } from 'lucide-vue-next'
 
 const sourceStore = useSourceStore()
@@ -48,6 +49,45 @@ const showSourceManager = ref(false)
 const showLoginModal = ref(false)
 const activeTab = ref('search')      // search | history | favorites
 
+// 书源管理状态
+const sourceManagerTab = ref('sources')  // sources | subscriptions | add
+const customSourceUrl = ref('')
+const customSourceName = ref('')
+const isAddingSource = ref(false)
+const addSourceError = ref('')
+const addSourceSuccess = ref('')
+
+// 搜索筛选状态
+const showSearchFilter = ref(false)
+const searchFilter = ref({
+  type: 'all',      // all | audiobook | music | podcast | asmr
+  duration: 'all',  // all | short | medium | long
+  order: 'default'  // default | click | pubdate | dm
+})
+
+// 筛选选项
+const filterOptions = {
+  type: [
+    { value: 'all', label: '全部类型', icon: '📚' },
+    { value: 'audiobook', label: '有声书', icon: '📖' },
+    { value: 'music', label: '音乐', icon: '🎵' },
+    { value: 'podcast', label: '播客', icon: '🎤' },
+    { value: 'asmr', label: 'ASMR', icon: '🌙' }
+  ],
+  duration: [
+    { value: 'all', label: '不限' },
+    { value: 'short', label: '10分钟以内' },
+    { value: 'medium', label: '10-60分钟' },
+    { value: 'long', label: '60分钟以上' }
+  ],
+  order: [
+    { value: 'default', label: '综合排序' },
+    { value: 'click', label: '最多播放' },
+    { value: 'pubdate', label: '最新发布' },
+    { value: 'dm', label: '最多弹幕' }
+  ]
+}
+
 // 登录状态
 const isLoggedIn = ref(false)
 const userInfo = ref(null)
@@ -72,6 +112,48 @@ function onLoginSuccess() {
   refreshLoginStatus()
   searchError.value = ''
 }
+
+// ===== 书源管理方法 =====
+
+// 手动添加书源URL
+async function handleAddSource() {
+  if (!customSourceUrl.value.trim()) {
+    addSourceError.value = '请输入书源URL'
+    return
+  }
+  
+  isAddingSource.value = true
+  addSourceError.value = ''
+  addSourceSuccess.value = ''
+  
+  try {
+    await sourceStore.addSubscription(customSourceUrl.value, customSourceName.value || '自定义书源')
+    addSourceSuccess.value = '添加成功！'
+    customSourceUrl.value = ''
+    customSourceName.value = ''
+    setTimeout(() => {
+      addSourceSuccess.value = ''
+    }, 2000)
+  } catch (e) {
+    addSourceError.value = e.message || '添加失败，请检查URL是否有效'
+  } finally {
+    isAddingSource.value = false
+  }
+}
+
+// 刷新所有订阅
+async function handleRefreshAllSubscriptions() {
+  try {
+    await sourceStore.refreshAllSubscriptions()
+  } catch (e) {
+    console.error('刷新订阅失败:', e)
+  }
+}
+
+// 禁用的源列表
+const disabledSources = computed(() => 
+  sourceStore.sources.filter(s => !s.enabled)
+)
 
 // ===== 计算属性 =====
 const progress = computed(() => {
@@ -106,6 +188,47 @@ function formatTime(seconds) {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
+// 构建筛选后的搜索关键词
+function buildSearchKeyword() {
+  let keyword = searchQuery.value.trim()
+  
+  // 根据类型添加关键词
+  const typeKeywords = {
+    audiobook: '有声小说 有声书',
+    music: '音乐 歌曲',
+    podcast: '播客 脱口秀',
+    asmr: 'ASMR 助眠'
+  }
+  
+  if (searchFilter.value.type !== 'all' && typeKeywords[searchFilter.value.type]) {
+    keyword = `${keyword} ${typeKeywords[searchFilter.value.type]}`
+  }
+  
+  return keyword
+}
+
+// 获取排序参数
+function getOrderParam() {
+  const orderMap = {
+    default: '',
+    click: 'click',
+    pubdate: 'pubdate',
+    dm: 'dm'
+  }
+  return orderMap[searchFilter.value.order] || ''
+}
+
+// 获取时长参数
+function getDurationParam() {
+  const durationMap = {
+    all: 0,
+    short: 1,    // 0-10分钟
+    medium: 2,   // 10-30分钟
+    long: 4      // 60分钟以上
+  }
+  return durationMap[searchFilter.value.duration] || 0
+}
+
 // 搜索
 async function handleSearch() {
   if (!searchQuery.value.trim()) return
@@ -132,8 +255,12 @@ async function handleSearch() {
         description: videoInfo.desc
       }]
     } else {
-      // 搜索视频
-      const result = await searchVideos(searchQuery.value)
+      // 搜索视频（带筛选参数）
+      const searchOptions = {
+        order: getOrderParam(),
+        duration: getDurationParam()
+      }
+      const result = await searchVideos(buildSearchKeyword(), searchOptions)
       searchResults.value = result.results
     }
     
@@ -143,6 +270,23 @@ async function handleSearch() {
     console.error('搜索失败:', error)
   } finally {
     isSearching.value = false
+  }
+}
+
+// 应用筛选后重新搜索
+function applyFilter() {
+  showSearchFilter.value = false
+  if (searchQuery.value.trim()) {
+    handleSearch()
+  }
+}
+
+// 重置筛选
+function resetFilter() {
+  searchFilter.value = {
+    type: 'all',
+    duration: 'all',
+    order: 'default'
   }
 }
 
@@ -454,6 +598,86 @@ onUnmounted(() => {
         </button>
       </div>
 
+      <!-- 筛选按钮和快捷标签 -->
+      <div class="flex items-center gap-2 mb-4">
+        <button 
+          @click="showSearchFilter = !showSearchFilter"
+          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+          :class="showSearchFilter || searchFilter.type !== 'all' || searchFilter.order !== 'default' || searchFilter.duration !== 'all' 
+            ? 'bg-nature-500 text-white' 
+            : 'bg-farm-100 text-farm-600 hover:bg-farm-200'"
+        >
+          <SlidersHorizontal :size="16" />
+          筛选
+        </button>
+        <!-- 快捷类型标签 -->
+        <div class="flex-1 flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+          <button 
+            v-for="opt in filterOptions.type" 
+            :key="opt.value"
+            @click="searchFilter.type = opt.value; handleSearch()"
+            class="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap"
+            :class="searchFilter.type === opt.value ? 'bg-nature-100 text-nature-700 border border-nature-300' : 'bg-farm-50 text-farm-600 hover:bg-farm-100'"
+          >
+            {{ opt.icon }} {{ opt.label }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 筛选面板 -->
+      <div 
+        v-if="showSearchFilter" 
+        class="mb-4 p-4 bg-white rounded-xl border border-farm-200 shadow-sm"
+      >
+        <!-- 排序方式 -->
+        <div class="mb-4">
+          <label class="block text-xs font-medium text-farm-600 mb-2">排序方式</label>
+          <div class="flex flex-wrap gap-2">
+            <button 
+              v-for="opt in filterOptions.order" 
+              :key="opt.value"
+              @click="searchFilter.order = opt.value"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+              :class="searchFilter.order === opt.value ? 'bg-nature-500 text-white' : 'bg-farm-100 text-farm-600 hover:bg-farm-200'"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 时长筛选 -->
+        <div class="mb-4">
+          <label class="block text-xs font-medium text-farm-600 mb-2">视频时长</label>
+          <div class="flex flex-wrap gap-2">
+            <button 
+              v-for="opt in filterOptions.duration" 
+              :key="opt.value"
+              @click="searchFilter.duration = opt.value"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+              :class="searchFilter.duration === opt.value ? 'bg-nature-500 text-white' : 'bg-farm-100 text-farm-600 hover:bg-farm-200'"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 按钮 -->
+        <div class="flex gap-2">
+          <button 
+            @click="resetFilter"
+            class="flex-1 py-2 rounded-lg text-sm font-medium bg-farm-100 text-farm-600 hover:bg-farm-200"
+          >
+            重置
+          </button>
+          <button 
+            @click="applyFilter"
+            class="flex-1 py-2 rounded-lg text-sm font-medium bg-nature-500 text-white hover:bg-nature-600"
+          >
+            应用筛选
+          </button>
+        </div>
+      </div>
+
       <!-- 标签切换 -->
       <div class="flex gap-2 mb-4">
         <button 
@@ -483,12 +707,35 @@ onUnmounted(() => {
       </div>
 
       <!-- 错误提示 -->
-      <div v-if="searchError" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-        {{ searchError }}
+      <div v-if="searchError" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+        <p class="text-red-600 text-sm mb-2">{{ searchError }}</p>
+        <p class="text-xs text-red-400">
+          提示：如果搜索失败，可以尝试直接粘贴B站视频链接（如 BV1xxx 或完整URL）
+        </p>
       </div>
 
       <!-- 搜索结果 -->
       <div v-if="activeTab === 'search'" class="space-y-3">
+        <!-- 推荐搜索（空状态时显示） -->
+        <div v-if="!searchResults.length && !searchQuery && !sourceStore.searchHistory.length" class="mb-4">
+          <div class="text-center py-6">
+            <Globe :size="48" class="mx-auto text-farm-300 mb-4" />
+            <p class="text-farm-500 mb-4">搜索B站有声小说、音乐、播客</p>
+            <p class="text-xs text-farm-400 mb-4">支持直接粘贴B站视频链接</p>
+          </div>
+          <div class="text-sm text-farm-500 mb-2">🔥 热门搜索</div>
+          <div class="flex flex-wrap gap-2">
+            <button 
+              v-for="keyword in ['有声小说', '单田芳人', '罗翔说书', '白噪音', 'ASMR', '睡前故事']" 
+              :key="keyword"
+              @click="searchFromHistory(keyword)"
+              class="px-3 py-1.5 bg-nature-50 text-nature-600 rounded-full text-sm hover:bg-nature-100 transition-colors"
+            >
+              {{ keyword }}
+            </button>
+          </div>
+        </div>
+
         <!-- 搜索历史 -->
         <div v-if="!searchResults.length && sourceStore.searchHistory.length" class="mb-4">
           <div class="flex items-center justify-between mb-2">
@@ -743,7 +990,8 @@ onUnmounted(() => {
       class="fixed inset-0 bg-farm-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       @click.self="showSourceManager = false"
     >
-      <div class="bg-white w-full max-w-md rounded-2xl overflow-hidden max-h-[80vh] flex flex-col">
+      <div class="bg-white w-full max-w-md rounded-2xl overflow-hidden max-h-[85vh] flex flex-col">
+        <!-- 头部 -->
         <div class="flex items-center justify-between p-4 border-b border-farm-100">
           <h3 class="font-bold text-farm-800">书源管理</h3>
           <button @click="showSourceManager = false" class="p-2 rounded-full bg-farm-100 text-farm-500">
@@ -751,48 +999,188 @@ onUnmounted(() => {
           </button>
         </div>
         
+        <!-- 标签页导航 -->
+        <div class="flex border-b border-farm-100">
+          <button 
+            @click="sourceManagerTab = 'sources'"
+            class="flex-1 py-3 text-sm font-medium transition-colors"
+            :class="sourceManagerTab === 'sources' ? 'text-nature-600 border-b-2 border-nature-500' : 'text-farm-500'"
+          >
+            书源列表
+          </button>
+          <button 
+            @click="sourceManagerTab = 'subscriptions'"
+            class="flex-1 py-3 text-sm font-medium transition-colors"
+            :class="sourceManagerTab === 'subscriptions' ? 'text-nature-600 border-b-2 border-nature-500' : 'text-farm-500'"
+          >
+            订阅管理
+          </button>
+          <button 
+            @click="sourceManagerTab = 'add'"
+            class="flex-1 py-3 text-sm font-medium transition-colors"
+            :class="sourceManagerTab === 'add' ? 'text-nature-600 border-b-2 border-nature-500' : 'text-farm-500'"
+          >
+            添加书源
+          </button>
+        </div>
+        
         <div class="overflow-y-auto flex-1 p-4">
-          <h4 class="text-sm font-medium text-farm-600 mb-3">已启用的源</h4>
-          <div class="space-y-2 mb-6">
-            <div 
-              v-for="source in sourceStore.enabledSources" 
-              :key="source.id"
-              class="flex items-center gap-3 p-3 bg-farm-50 rounded-xl"
-            >
-              <span class="text-2xl">{{ source.icon || '📚' }}</span>
-              <div class="flex-1">
-                <p class="font-medium text-farm-800 text-sm">{{ source.name }}</p>
-                <p class="text-xs text-farm-400">{{ source.description }}</p>
-              </div>
-              <button 
-                @click="sourceStore.toggleSource(source.id)"
-                class="text-nature-500"
+          <!-- 书源列表标签页 -->
+          <template v-if="sourceManagerTab === 'sources'">
+            <h4 class="text-sm font-medium text-farm-600 mb-3">已启用的源</h4>
+            <div class="space-y-2 mb-6">
+              <div 
+                v-for="source in sourceStore.enabledSources" 
+                :key="source.id"
+                class="flex items-center gap-3 p-3 bg-nature-50 rounded-xl border border-nature-100"
               >
-                ✓
-              </button>
+                <span class="text-2xl">{{ source.icon || '📚' }}</span>
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium text-farm-800 text-sm truncate">{{ source.name }}</p>
+                  <p class="text-xs text-farm-400 truncate">{{ source.description }}</p>
+                </div>
+                <button 
+                  @click="sourceStore.toggleSource(source.id)"
+                  class="p-2 rounded-lg bg-nature-100 text-nature-600 hover:bg-nature-200"
+                  title="禁用"
+                >
+                  ✓
+                </button>
+              </div>
+              <p v-if="!sourceStore.enabledSources.length" class="text-sm text-farm-400 text-center py-4">暂无启用的书源</p>
             </div>
-          </div>
 
-          <h4 class="text-sm font-medium text-farm-600 mb-3">推荐订阅</h4>
-          <div class="space-y-2">
-            <div 
-              v-for="sub in sourceStore.PRESET_SUBSCRIPTIONS" 
-              :key="sub.url"
-              class="flex items-center gap-3 p-3 bg-farm-50 rounded-xl"
-            >
-              <Link :size="20" class="text-farm-400" />
-              <div class="flex-1">
-                <p class="font-medium text-farm-800 text-sm">{{ sub.name }}</p>
-                <p class="text-xs text-farm-400">{{ sub.description }}</p>
-              </div>
-              <button 
-                @click="sourceStore.addSubscription(sub.url, sub.name)"
-                class="px-3 py-1 bg-nature-500 text-white text-xs rounded-lg"
+            <h4 class="text-sm font-medium text-farm-600 mb-3">已禁用的源</h4>
+            <div class="space-y-2">
+              <div 
+                v-for="source in disabledSources" 
+                :key="source.id"
+                class="flex items-center gap-3 p-3 bg-farm-50 rounded-xl opacity-60"
               >
-                添加
+                <span class="text-2xl grayscale">{{ source.icon || '📚' }}</span>
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium text-farm-600 text-sm truncate">{{ source.name }}</p>
+                  <p class="text-xs text-farm-400 truncate">{{ source.description }}</p>
+                </div>
+                <button 
+                  @click="sourceStore.toggleSource(source.id)"
+                  class="p-2 rounded-lg bg-farm-200 text-farm-500 hover:bg-nature-100 hover:text-nature-600"
+                  title="启用"
+                >
+                  <Plus :size="16" />
+                </button>
+              </div>
+              <p v-if="!disabledSources.length" class="text-sm text-farm-400 text-center py-4">暂无禁用的书源</p>
+            </div>
+          </template>
+
+          <!-- 订阅管理标签页 -->
+          <template v-if="sourceManagerTab === 'subscriptions'">
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-sm font-medium text-farm-600">已订阅 ({{ sourceStore.subscriptions.length }})</h4>
+              <button 
+                @click="handleRefreshAllSubscriptions"
+                class="flex items-center gap-1 px-3 py-1.5 bg-nature-500 text-white text-xs rounded-lg"
+              >
+                <RefreshCw :size="14" />
+                刷新全部
               </button>
             </div>
-          </div>
+            
+            <div class="space-y-2 mb-6">
+              <div 
+                v-for="sub in sourceStore.subscriptions" 
+                :key="sub.id"
+                class="flex items-center gap-3 p-3 bg-farm-50 rounded-xl"
+              >
+                <Globe :size="20" class="text-farm-400 flex-shrink-0" />
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium text-farm-800 text-sm truncate">{{ sub.name }}</p>
+                  <p class="text-xs text-farm-400 truncate">{{ sub.url }}</p>
+                  <p v-if="sub.lastUpdated" class="text-xs text-farm-300 mt-1">
+                    更新: {{ new Date(sub.lastUpdated).toLocaleString() }}
+                  </p>
+                </div>
+                <button 
+                  @click="sourceStore.removeSubscription(sub.id)"
+                  class="p-2 rounded-lg text-red-400 hover:bg-red-50"
+                  title="删除订阅"
+                >
+                  <Trash2 :size="16" />
+                </button>
+              </div>
+              <p v-if="!sourceStore.subscriptions.length" class="text-sm text-farm-400 text-center py-4">暂无订阅</p>
+            </div>
+
+            <h4 class="text-sm font-medium text-farm-600 mb-3">推荐订阅</h4>
+            <div class="space-y-2">
+              <div 
+                v-for="sub in sourceStore.PRESET_SUBSCRIPTIONS" 
+                :key="sub.url"
+                class="flex items-center gap-3 p-3 bg-farm-50 rounded-xl"
+              >
+                <span class="text-xl">{{ sub.icon || '📚' }}</span>
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium text-farm-800 text-sm truncate">{{ sub.name }}</p>
+                  <p class="text-xs text-farm-400 truncate">{{ sub.description }}</p>
+                </div>
+                <button 
+                  @click="sourceStore.addSubscription(sub.url, sub.name)"
+                  class="px-3 py-1.5 bg-nature-500 text-white text-xs rounded-lg whitespace-nowrap"
+                >
+                  添加
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <!-- 添加书源标签页 -->
+          <template v-if="sourceManagerTab === 'add'">
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-farm-700 mb-2">书源名称（可选）</label>
+                <input 
+                  v-model="customSourceName"
+                  type="text"
+                  placeholder="自定义书源"
+                  class="w-full px-4 py-3 rounded-xl border border-farm-200 focus:border-nature-400 focus:ring-2 focus:ring-nature-100 outline-none text-sm"
+                />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-farm-700 mb-2">书源URL</label>
+                <input 
+                  v-model="customSourceUrl"
+                  type="url"
+                  placeholder="https://example.com/sources.json"
+                  class="w-full px-4 py-3 rounded-xl border border-farm-200 focus:border-nature-400 focus:ring-2 focus:ring-nature-100 outline-none text-sm"
+                />
+              </div>
+              
+              <!-- 错误/成功提示 -->
+              <p v-if="addSourceError" class="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{{ addSourceError }}</p>
+              <p v-if="addSourceSuccess" class="text-sm text-nature-600 bg-nature-50 px-3 py-2 rounded-lg">{{ addSourceSuccess }}</p>
+              
+              <button 
+                @click="handleAddSource"
+                :disabled="isAddingSource"
+                class="w-full py-3 bg-nature-500 text-white rounded-xl font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Plus :size="18" />
+                {{ isAddingSource ? '添加中...' : '添加书源' }}
+              </button>
+              
+              <div class="mt-6 p-4 bg-farm-50 rounded-xl">
+                <h5 class="text-sm font-medium text-farm-700 mb-2">💡 书源获取方式</h5>
+                <ul class="text-xs text-farm-500 space-y-1">
+                  <li>• 在上方"订阅管理"中添加推荐订阅</li>
+                  <li>• 从网上搜索"我的听书书源"获取更多源</li>
+                  <li>• 书源URL通常为 .json 格式文件</li>
+                  <li>• 部分源可能需要科学上网才能访问</li>
+                </ul>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
     </div>
