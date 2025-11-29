@@ -5,27 +5,17 @@
 
 import { Capacitor } from '@capacitor/core'
 import { getAuthCookies, isLoggedIn } from './bilibiliAuth'
+import { httpGet } from './httpService'
 
 // 判断是否是原生平台
 const isNative = Capacitor.isNativePlatform()
 
 /**
  * 发起API请求
- * Web端使用Vite代理，原生端直接请求
+ * Web端使用Vite代理，原生端使用CapacitorHttp绑过CORS
  * 自动携带登录Cookie
  */
 async function fetchApi(path, isSearch = false) {
-  let url
-  
-  if (isNative) {
-    // 原生端直接请求B站API
-    url = `https://api.bilibili.com${path}`
-  } else {
-    // Web端使用Vite代理
-    const prefix = isSearch ? '/api/bili-search' : '/api/bili'
-    url = `${prefix}${path}`
-  }
-  
   // 构建请求选项
   const options = {
     headers: {}
@@ -37,25 +27,36 @@ async function fetchApi(path, isSearch = false) {
     options.headers['Cookie'] = cookies
   }
   
-  try {
-    const response = await fetch(url, options)
+  let url
+  if (isNative) {
+    // 原生端直接请求B站API（使用CapacitorHttp）
+    url = `https://api.bilibili.com${path}`
+    return await httpGet(url, options)
+  } else {
+    // Web端使用Vite代理
+    const prefix = isSearch ? '/api/bili-search' : '/api/bili'
+    url = `${prefix}${path}`
     
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
-    }
-    
-    const text = await response.text()
-    
-    // 检查是否是JSON
     try {
-      return JSON.parse(text)
-    } catch {
-      console.error('响应不是JSON:', text.substring(0, 200))
-      throw new Error('API返回格式错误')
+      const response = await fetch(url, options)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      
+      const text = await response.text()
+      
+      // 检查是否是JSON
+      try {
+        return JSON.parse(text)
+      } catch {
+        console.error('响应不是JSON:', text.substring(0, 200))
+        throw new Error('API返回格式错误')
+      }
+    } catch (error) {
+      console.error('API请求失败:', error)
+      throw error
     }
-  } catch (error) {
-    console.error('API请求失败:', error)
-    throw error
   }
 }
 
@@ -71,8 +72,14 @@ async function getPlayUrlFromThirdParty(bvid, cid) {
   
   for (const api of apis) {
     try {
-      const response = await fetch(api)
-      const data = await response.json()
+      let data
+      if (isNative) {
+        // 原生端使用CapacitorHttp
+        data = await httpGet(api)
+      } else {
+        const response = await fetch(api)
+        data = await response.json()
+      }
       
       if (data.code === 200 || data.url || data.data?.url) {
         return data.url || data.data?.url || data.audio

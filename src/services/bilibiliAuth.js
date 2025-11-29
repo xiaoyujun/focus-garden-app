@@ -4,6 +4,7 @@
  */
 
 import { Capacitor } from '@capacitor/core'
+import { httpGet } from './httpService'
 
 const isNative = Capacitor.isNativePlatform()
 const AUTH_STORAGE_KEY = 'bilibili-auth'
@@ -115,8 +116,14 @@ export function getAuthCookies() {
  */
 export async function generateQRCode() {
   try {
-    const response = await fetch(getApiUrl('/x/passport-login/web/qrcode/generate'))
-    const data = await response.json()
+    let data
+    if (isNative) {
+      // 原生端使用CapacitorHttp
+      data = await httpGet('https://passport.bilibili.com/x/passport-login/web/qrcode/generate')
+    } else {
+      const response = await fetch(getApiUrl('/x/passport-login/web/qrcode/generate'))
+      data = await response.json()
+    }
     
     if (data.code !== 0) {
       throw new Error(data.message || '生成二维码失败')
@@ -145,10 +152,17 @@ export async function generateQRCode() {
  */
 export async function checkQRCodeStatus(qrcode_key) {
   try {
-    const response = await fetch(
-      getApiUrl(`/x/passport-login/web/qrcode/poll?qrcode_key=${qrcode_key}`)
-    )
-    const data = await response.json()
+    let data, response
+    
+    if (isNative) {
+      // 原生端使用CapacitorHttp
+      data = await httpGet(`https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key=${qrcode_key}`)
+    } else {
+      response = await fetch(
+        getApiUrl(`/x/passport-login/web/qrcode/poll?qrcode_key=${qrcode_key}`)
+      )
+      data = await response.json()
+    }
     
     const result = {
       status: data.data?.code ?? data.code,
@@ -252,12 +266,22 @@ export async function fetchUserInfo() {
   if (!authInfo.cookies) return null
   
   try {
-    const response = await fetch(getMainApiUrl('/x/web-interface/nav'), {
-      headers: {
-        'Cookie': authInfo.cookies
-      }
-    })
-    const data = await response.json()
+    let data
+    if (isNative) {
+      // 原生端使用CapacitorHttp
+      data = await httpGet('https://api.bilibili.com/x/web-interface/nav', {
+        headers: {
+          'Cookie': authInfo.cookies
+        }
+      })
+    } else {
+      const response = await fetch(getMainApiUrl('/x/web-interface/nav'), {
+        headers: {
+          'Cookie': authInfo.cookies
+        }
+      })
+      data = await response.json()
+    }
     
     if (data.code === 0 && data.data?.isLogin) {
       return {
