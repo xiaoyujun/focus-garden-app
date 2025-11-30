@@ -8,7 +8,7 @@ const GITHUB_OWNER = 'xiaoyujun'
 const GITHUB_REPO = 'focus-garden-app'
 
 // 当前应用版本（与 package.json 保持一致）
-export const APP_VERSION = '1.0.0'
+export const APP_VERSION = '2.0.0'
 
 /**
  * 获取 GitHub 最新发布版本信息
