@@ -19,7 +19,7 @@ const route = useRoute()
           :is="Component" 
           :key="currentRoute.fullPath"
         />
-        <KeepAlive v-else :include="['OnlinePlayer', 'BookSourcePlayer']">
+        <KeepAlive v-else :include="['OnlinePlayer', 'AudioPlayer']">
           <component :is="Component" />
         </KeepAlive>
       </transition>

@@ -48,7 +48,9 @@ npm run android:open
 
 应用需要以下权限（已在 AndroidManifest.xml 中配置）：
 
+- `INTERNET` - 网络访问（用于下载资源、B站播放）
 - `READ_EXTERNAL_STORAGE` - 读取音频文件
+- `WRITE_EXTERNAL_STORAGE` - 写入下载的音频文件
 - `READ_MEDIA_AUDIO` - Android 13+ 读取音频
 
 ## 常用命令
@@ -62,11 +64,20 @@ npm run android:open
 
 ## 移动端功能说明
 
-在移动端 APK 中：
+### 本地音频播放
 - 点击"选择目录"会打开系统文件选择器
 - 可以选择多个音频文件
 - 文件会按名称自然排序
 - 播放进度会自动保存
+
+### 资源下载
+- 支持解析喜马拉雅、蜻蜓FM、懒人听书等平台链接
+- 下载的文件保存在 `Documents/FocusGarden/Downloads/` 目录
+- 下载完成后可在本地播放器中播放
+
+### B站在线播放
+- 支持搜索B站音频内容
+- 支持登录后播放高清音频
 
 ## 故障排除
 
@@ -81,6 +92,13 @@ npm run android:sync
 ### 权限问题
 确保在 `android/app/src/main/AndroidManifest.xml` 中有：
 ```xml
+<uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 ```
+
+### 下载文件找不到
+下载的文件保存在应用的 Documents 目录下：
+- 路径: `Documents/FocusGarden/Downloads/[专辑名]/`
+- 可使用文件管理器访问，或在本地播放器中选择该目录

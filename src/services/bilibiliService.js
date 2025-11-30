@@ -109,6 +109,8 @@ const QUALITY_MAP = {
 
 // 音频质量标识
 const AUDIO_QUALITY_MAP = {
+  30251: 'Hi-Res 无损',
+  30250: '杜比全景声',
   30280: '320kbps',
   30232: '128kbps',
   30216: '64kbps'
@@ -190,37 +192,80 @@ export async function getVideoInfo(bvid) {
 }
 
 /**
- * 获取视频播放地址（使用html5模式绕过防盗链）
+ * 获取视频播放地址
+ * 登录用户使用标准Web模式获取更高清晰度，未登录使用html5模式绕过防盗链
  * @param {string} bvid - BV号
  * @param {number} cid - 视频cid
  * @param {number} quality - 画质，默认80(1080P)
  * @returns {Promise<object>} - 播放地址信息
  */
 export async function getPlayUrl(bvid, cid, quality = 80) {
-  try {
-    // 使用 html5 平台模式，无需 referer 验证
-    const params = new URLSearchParams({
-      bvid,
-      cid,
-      qn: quality,
-      fnval: 16, // DASH格式
-      fnver: 0,
-      fourk: 1,
-      platform: 'html5',
-      high_quality: 1
-    })
-    
-    const data = await fetchApi(`/x/player/playurl?${params}`)
-    
-    if (data.code !== 0) {
-      throw new Error(data.message || '获取播放地址失败')
+  const loggedIn = isLoggedIn()
+  
+  // 登录用户优先使用标准Web模式（更高清晰度）
+  if (loggedIn) {
+    try {
+      const result = await getPlayUrlWebMode(bvid, cid, quality)
+      if (result) return result
+    } catch (error) {
+      console.warn('Web模式获取失败，回退到html5模式:', error.message)
     }
-    
-    return parsePlayUrl(data.data)
+  }
+  
+  // 未登录或Web模式失败时，使用html5模式
+  try {
+    return await getPlayUrlHtml5Mode(bvid, cid, quality)
   } catch (error) {
     console.error('获取B站播放地址失败:', error)
     throw error
   }
+}
+
+/**
+ * 使用标准Web模式获取播放地址（需要登录，支持高清）
+ */
+async function getPlayUrlWebMode(bvid, cid, quality = 80) {
+  // fnval=4048 可获取所有格式：DASH + HDR + 4K + 杜比 + 8K + AV1
+  const params = new URLSearchParams({
+    bvid,
+    cid,
+    qn: quality,
+    fnval: 4048,
+    fnver: 0,
+    fourk: 1
+  })
+  
+  const data = await fetchApi(`/x/player/wbi/playurl?${params}`)
+  
+  if (data.code !== 0) {
+    throw new Error(data.message || '获取播放地址失败')
+  }
+  
+  return parsePlayUrl(data.data)
+}
+
+/**
+ * 使用html5模式获取播放地址（无需登录，清晰度受限）
+ */
+async function getPlayUrlHtml5Mode(bvid, cid, quality = 80) {
+  const params = new URLSearchParams({
+    bvid,
+    cid,
+    qn: quality,
+    fnval: 16, // DASH格式
+    fnver: 0,
+    fourk: 1,
+    platform: 'html5',
+    high_quality: 1
+  })
+  
+  const data = await fetchApi(`/x/player/playurl?${params}`)
+  
+  if (data.code !== 0) {
+    throw new Error(data.message || '获取播放地址失败')
+  }
+  
+  return parsePlayUrl(data.data)
 }
 
 /**
@@ -263,6 +308,34 @@ function parsePlayUrl(data) {
         bandwidth: a.bandwidth,
         codecs: a.codecs
       }))
+    }
+    
+    // Hi-Res 无损音频（登录用户/大会员可用）
+    if (data.dash.flac?.audio) {
+      const flac = data.dash.flac.audio
+      result.audios.unshift({
+        id: flac.id || 30251,
+        quality: 'Hi-Res 无损',
+        url: flac.baseUrl || flac.base_url,
+        backupUrl: flac.backupUrl || flac.backup_url || [],
+        bandwidth: flac.bandwidth,
+        codecs: flac.codecs,
+        isFlac: true
+      })
+    }
+    
+    // 杜比全景声（大会员可用）
+    if (data.dash.dolby?.audio?.length > 0) {
+      const dolby = data.dash.dolby.audio[0]
+      result.audios.unshift({
+        id: dolby.id || 30250,
+        quality: '杜比全景声',
+        url: dolby.baseUrl || dolby.base_url,
+        backupUrl: dolby.backupUrl || dolby.backup_url || [],
+        bandwidth: dolby.bandwidth,
+        codecs: dolby.codecs,
+        isDolby: true
+      })
     }
   }
   
@@ -765,6 +838,191 @@ export async function getUploaderStat(mid) {
   }
 }
 
+/**
+ * 获取首页推荐视频（登录后为个性化推荐）
+ * @param {number} freshIdx - 刷新索引，用于分页
+ * @param {number} pageSize - 每页数量
+ * @returns {Promise<object>}
+ */
+export async function getRecommendVideos(freshIdx = 1, pageSize = 12) {
+  try {
+    const params = new URLSearchParams({
+      fresh_idx: freshIdx,
+      ps: pageSize,
+      fresh_type: 4,
+      version: 1,
+      web_location: 1430650
+    })
+    
+    const data = await fetchApi(`/x/web-interface/index/top/rcmd?${params}`)
+    
+    if (data.code !== 0) {
+      throw new Error(data.message || '获取推荐失败')
+    }
+    
+    const items = data.data?.item || []
+    
+    return {
+      freshIdx: freshIdx + 1,
+      list: items.map(v => ({
+        bvid: v.bvid,
+        aid: v.id,
+        cid: v.cid,
+        title: v.title,
+        cover: v.pic?.startsWith('//') ? `https:${v.pic}` : v.pic,
+        duration: v.duration,
+        author: v.owner?.name || '',
+        mid: v.owner?.mid || 0,
+        face: v.owner?.face || '',
+        play: v.stat?.view || 0,
+        danmaku: v.stat?.danmaku || 0,
+        like: v.stat?.like || 0,
+        pubdate: v.pubdate,
+        // 推荐理由
+        rcmdReason: v.rcmd_reason?.content || '',
+        // 是否为广告
+        isAd: v.is_ad || false
+      })).filter(v => !v.isAd)  // 过滤广告
+    }
+  } catch (error) {
+    console.error('获取首页推荐失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 获取热门视频排行榜
+ * @param {number} page - 页码
+ * @param {number} pageSize - 每页数量
+ * @returns {Promise<object>}
+ */
+export async function getPopularVideos(page = 1, pageSize = 20) {
+  try {
+    const params = new URLSearchParams({
+      pn: page,
+      ps: pageSize
+    })
+    
+    const data = await fetchApi(`/x/web-interface/popular?${params}`)
+    
+    if (data.code !== 0) {
+      throw new Error(data.message || '获取热门视频失败')
+    }
+    
+    const list = data.data?.list || []
+    
+    return {
+      hasMore: !data.data?.no_more,
+      list: list.map(v => ({
+        bvid: v.bvid,
+        aid: v.aid,
+        cid: v.cid,
+        title: v.title,
+        cover: v.pic?.startsWith('//') ? `https:${v.pic}` : v.pic,
+        duration: v.duration,
+        author: v.owner?.name || '',
+        mid: v.owner?.mid || 0,
+        face: v.owner?.face || '',
+        play: v.stat?.view || 0,
+        danmaku: v.stat?.danmaku || 0,
+        like: v.stat?.like || 0,
+        pubdate: v.pubdate,
+        // 热门推荐理由
+        rcmdReason: v.rcmd_reason || ''
+      }))
+    }
+  } catch (error) {
+    console.error('获取热门视频失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 获取用户关注的UP主最新投稿（需要登录）
+ * @param {number} page - 页码
+ * @param {number} pageSize - 每页数量
+ * @returns {Promise<object>}
+ */
+export async function getFollowingVideos(page = 1, pageSize = 20) {
+  if (!isLoggedIn()) {
+    throw new Error('请先登录B站账号')
+  }
+  
+  try {
+    const params = new URLSearchParams({
+      pn: page,
+      ps: pageSize,
+      type: 0  // 0-全部 1-视频 2-番剧 21-合集
+    })
+    
+    const data = await fetchApi(`/x/polymer/web-dynamic/v1/feed/all?${params}`)
+    
+    if (data.code !== 0) {
+      throw new Error(data.message || '获取动态失败')
+    }
+    
+    const items = data.data?.items || []
+    
+    // 只筛选视频类型的动态
+    const videoItems = items.filter(item => 
+      item.type === 'DYNAMIC_TYPE_AV' && item.modules?.module_dynamic?.major?.archive
+    )
+    
+    return {
+      hasMore: data.data?.has_more || false,
+      offset: data.data?.offset || '',
+      list: videoItems.map(item => {
+        const archive = item.modules.module_dynamic.major.archive
+        const author = item.modules?.module_author || {}
+        return {
+          bvid: archive.bvid,
+          aid: archive.aid,
+          title: archive.title,
+          cover: archive.cover?.startsWith('//') ? `https:${archive.cover}` : archive.cover,
+          duration: parseDuration(archive.duration_text),
+          durationText: archive.duration_text,
+          author: author.name || '',
+          mid: author.mid || 0,
+          face: author.face || '',
+          play: parseCount(archive.stat?.play),
+          danmaku: parseCount(archive.stat?.danmaku),
+          pubdate: author.pub_ts || 0,
+          pubText: author.pub_time || ''
+        }
+      })
+    }
+  } catch (error) {
+    console.error('获取关注动态失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 解析时长文本为秒数
+ */
+function parseDuration(text) {
+  if (!text) return 0
+  const parts = text.split(':').map(Number)
+  if (parts.length === 2) {
+    return parts[0] * 60 + parts[1]
+  } else if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2]
+  }
+  return 0
+}
+
+/**
+ * 解析播放量文本
+ */
+function parseCount(text) {
+  if (typeof text === 'number') return text
+  if (!text) return 0
+  if (text.includes('万')) {
+    return Math.round(parseFloat(text) * 10000)
+  }
+  return parseInt(text) || 0
+}
+
 export default {
   extractBilibiliId,
   getVideoInfo,
@@ -779,6 +1037,9 @@ export default {
   getHistory,
   getUploaderInfo,
   getUploaderStat,
+  getRecommendVideos,
+  getPopularVideos,
+  getFollowingVideos,
   QUALITY_MAP,
   AUDIO_QUALITY_MAP
 }

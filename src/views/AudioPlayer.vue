@@ -1,12 +1,17 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+
+defineOptions({ name: 'AudioPlayer' })
 import { useAudioStore } from '../stores/audioStore'
 import { 
   FolderOpen, Play, Pause, SkipBack, SkipForward, 
   Volume2, VolumeX, Repeat, Repeat1, Shuffle, 
   List, ChevronLeft, ChevronRight, Gauge, Clock,
-  RotateCcw, RotateCw, X, Music2, Headphones
+  RotateCcw, RotateCw, X, Music2, Headphones, Download
 } from 'lucide-vue-next'
+
+const router = useRouter()
 import AudioErrorDialog from '../components/AudioErrorDialog.vue'
 
 const store = useAudioStore()
@@ -379,12 +384,24 @@ function getDisplayName(filename) {
     />
 
     <!-- 头部 -->
-    <header class="pt-6 pb-2 px-6 text-center relative z-10">
-      <h1 class="text-2xl font-bold text-farm-900 flex items-center justify-center gap-2 tracking-tight">
-        <Headphones :size="24" class="text-nature-500" />
-        <span>有声小说</span>
-      </h1>
-      <p class="text-sm text-farm-400/80 mt-1 font-medium">享受惬意的听书时光</p>
+    <header class="pt-6 pb-2 px-6 relative z-10">
+      <div class="flex items-center justify-between">
+        <div class="w-10"></div>
+        <div class="text-center">
+          <h1 class="text-2xl font-bold text-farm-900 flex items-center justify-center gap-2 tracking-tight">
+            <Headphones :size="24" class="text-nature-500" />
+            <span>有声小说</span>
+          </h1>
+          <p class="text-sm text-farm-400/80 mt-1 font-medium">享受惬意的听书时光</p>
+        </div>
+        <button
+          @click="router.push('/download')"
+          class="w-10 h-10 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center hover:bg-purple-100 transition-colors"
+          title="下载资源"
+        >
+          <Download :size="20" />
+        </button>
+      </div>
     </header>
 
     <main class="px-6 max-w-md mx-auto relative z-10">
@@ -421,6 +438,19 @@ function getDisplayName(filename) {
         <p class="text-xs text-farm-400 mt-4">
           支持格式: {{ store.supportedFormats.join(', ') }}
         </p>
+
+        <!-- 下载资源入口 -->
+        <div class="mt-8 pt-8 border-t border-farm-100">
+          <p class="text-farm-500 mb-3">或从网络下载资源</p>
+          <button
+            @click="router.push('/download')"
+            class="inline-flex items-center gap-2 bg-purple-100 text-purple-600 px-5 py-2.5 rounded-xl font-medium hover:bg-purple-200 transition-colors"
+          >
+            <Download :size="18" />
+            解析下载
+          </button>
+          <p class="text-xs text-farm-400 mt-2">支持喜马拉雅、蜻蜓FM等平台</p>
+        </div>
       </div>
 
         <!-- 有播放列表时 -->
