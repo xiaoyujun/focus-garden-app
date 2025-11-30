@@ -21,31 +21,91 @@ const isNative = Capacitor.isNativePlatform()
 
 /**
  * 通用请求方法
+ * @param {string} url - 请求URL
+ * @param {Object} options - 请求配置
+ * @param {string} options.responseType - 'text' | 'json'
+ * @param {string} options.method - 'GET' | 'POST'
+ * @param {string} options.body - POST 请求体
+ * @param {Object} options.headers - 请求头
  */
 async function fetchUrl(url, options = {}) {
-  const { responseType = 'text', headers = {} } = options
+  const { 
+    responseType = 'text', 
+    method = 'GET',
+    body = null,
+    headers = {} 
+  } = options
   
   if (isNative) {
     // 原生端直接请求
     if (responseType === 'json') {
-      return await httpGet(url, { headers })
+      return await httpGet(url, { headers, method, body })
     } else {
-      return await httpGetHtml(url, { headers })
+      return await httpGetHtml(url, { headers, method, body })
     }
   } else {
     // Web端通过代理 - 构建代理URL
-    const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`
-    const response = await fetch(proxyUrl, { headers })
+    // 对于 POST 请求，将 method 和 body 信息也传递给代理
+    let proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`
+    if (method === 'POST') {
+      proxyUrl += `&method=POST`
+    }
+    
+    const fetchOptions = { 
+      method: method === 'POST' ? 'POST' : 'GET',
+      headers: { ...headers }
+    }
+    
+    if (method === 'POST' && body) {
+      fetchOptions.body = body
+      fetchOptions.headers['Content-Type'] = fetchOptions.headers['Content-Type'] || 'application/json'
+    }
+    
+    const response = await fetch(proxyUrl, fetchOptions)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     return responseType === 'json' ? response.json() : response.text()
   }
 }
 
 /**
+ * 将 Legado 选择器语法转换为标准 CSS 选择器
+ * Legado 格式: class.name, id.name, tag.name, tag.name.index
+ * 标准 CSS: .name, #name, name
+ */
+function convertLegadoSelector(selector) {
+  if (!selector) return ''
+  
+  // 移除开头的 + 号（Legado用于表示下一个兄弟）
+  selector = selector.replace(/^\+/, '')
+  
+  // 处理 $ 开头的选择器（Legado用于当前元素）
+  if (selector.startsWith('$')) {
+    selector = selector.substring(1)
+  }
+  
+  // 分割链式选择器 class.name@tag.a@href
+  const chainParts = selector.split('@')
+  let cssSelector = chainParts[0]
+  const attrPart = chainParts.slice(1).join('@')
+  
+  // 转换 class.xxx -> .xxx
+  cssSelector = cssSelector.replace(/\bclass\.([a-zA-Z0-9_-]+)/g, '.$1')
+  // 转换 id.xxx -> #xxx
+  cssSelector = cssSelector.replace(/\bid\.([a-zA-Z0-9_-]+)/g, '#$1')
+  // 转换 tag.xxx -> xxx (去掉 tag. 前缀)
+  cssSelector = cssSelector.replace(/\btag\.([a-zA-Z0-9]+)/g, '$1')
+  // 处理索引 .name.0 -> .name:nth-child(1) (简化处理：忽略索引)
+  cssSelector = cssSelector.replace(/\.(\d+)(?=\s|$|@)/g, '')
+  
+  return attrPart ? `${cssSelector}@${attrPart}` : cssSelector
+}
+
+/**
  * 解析规则字符串
  * 支持的格式:
  * - CSS选择器: div.item 或 @css:div.item
- * - JSONPath: $.data.list 或 @json:$.data.list
+ * - Legado格式: class.item, tag.a, id.name
+ * - JSONPath: $.data.list 或 @json:$.data.list 或 @JSon:
  * - 正则表达式: @regex:pattern
  * - 属性获取: @attr:href
  * - 文本获取: @text
@@ -56,11 +116,23 @@ function parseRule(rule) {
   
   rule = rule.trim()
   
-  // JSONPath
-  if (rule.startsWith('$.') || rule.startsWith('@json:')) {
+  // @js: JavaScript 规则 - 暂不支持，返回空
+  if (rule.startsWith('@js:') || rule.includes('<js>')) {
+    console.warn('暂不支持 @js: 规则:', rule.substring(0, 50))
+    return { type: 'none', value: '' }
+  }
+  
+  // @operate: DOM操作规则 - 暂不支持
+  if (rule.startsWith('@operate:') || rule.startsWith('$$.')) {
+    console.warn('暂不支持 @operate: 规则:', rule.substring(0, 50))
+    return { type: 'none', value: '' }
+  }
+  
+  // JSONPath (支持 @JSon: 和 @json:)
+  if (rule.startsWith('$.') || rule.startsWith('@json:') || rule.startsWith('@JSon:')) {
     return { 
       type: 'jsonpath', 
-      value: rule.replace('@json:', '') 
+      value: rule.replace(/@[jJ][sS][oO][nN]:/, '').replace(/^\$\.?/, '$.')
     }
   }
   
@@ -70,13 +142,19 @@ function parseRule(rule) {
     return { type: 'regex', value: pattern }
   }
   
-  // CSS选择器 (默认)
-  const cssRule = rule.replace('@css:', '')
+  // CSS选择器 (默认) - 先转换 Legado 格式
+  let cssRule = rule.replace('@css:', '')
+  cssRule = convertLegadoSelector(cssRule)
   
   // 检查是否有属性或文本获取后缀
   const parts = cssRule.split('@')
-  const selector = parts[0].trim()
+  let selector = parts[0].trim()
   const suffix = parts[1]?.trim()
+  
+  // 处理空选择器（只有属性）
+  if (!selector && suffix) {
+    return { type: 'attr', value: suffix, attribute: suffix }
+  }
   
   let attribute = null
   if (suffix) {
@@ -87,6 +165,9 @@ function parseRule(rule) {
     } else if (suffix === 'html') {
       attribute = 'html'
     } else if (suffix === 'src' || suffix === 'href') {
+      attribute = suffix
+    } else {
+      // Legado 格式可能直接写属性名
       attribute = suffix
     }
   }
@@ -180,6 +261,10 @@ function getByPath(obj, path) {
 
 /**
  * 解析URL中的占位符
+ * 支持多种书源格式：
+ * - {{key}}, {{page}} - 双大括号格式
+ * - {key}, {page} - 单大括号格式  
+ * - searchUrl@searchword={{key}} 中的 @ 需要转换为 ?
  */
 function resolveUrlTemplate(template, params = {}) {
   if (!template) return ''
@@ -196,13 +281,11 @@ function resolveUrlTemplate(template, params = {}) {
     return encodeURIComponent(params[key] || '')
   })
   
-  // 替换 @key 格式（某些书源使用）
-  url = url.replace(/@(\w+)/g, (match, key) => {
-    if (params[key] !== undefined) {
-      return encodeURIComponent(params[key])
-    }
-    return match
-  })
+  // 处理书源格式中的 @ 作为查询参数分隔符
+  // 例如: search.php@searchword=xxx 应转换为 search.php?searchword=xxx
+  // 但要避免误伤正常的 @ 字符（如邮箱）
+  // 规则：@ 后面紧跟 参数名=值 的格式，则转换为 ?
+  url = url.replace(/([a-zA-Z0-9_.-]+\.[a-zA-Z0-9]+)@([a-zA-Z_][a-zA-Z0-9_]*=)/g, '$1?$2')
   
   return url
 }
@@ -227,37 +310,150 @@ function resolveUrl(base, relative) {
 }
 
 /**
+ * 从 URL 模板中提取配置选项
+ * Legado 书源格式在 URL 后附带 JSON 配置，如：
+ * - 简单格式: /search?key={{key}},{"charset": "gbk"}
+ * - POST格式: /api/search,{'method': 'POST', 'body': '{"key":"{{key}}"}'}
+ */
+function parseUrlTemplate(template) {
+  if (!template) return { url: '', options: {} }
+  
+  // 找到第一个逗号后面跟着 { 的位置（配置开始）
+  // 需要处理嵌套的大括号
+  let configStart = -1
+  for (let i = 0; i < template.length - 1; i++) {
+    if (template[i] === ',' && template[i + 1].trim() === '{') {
+      configStart = i
+      break
+    }
+    // 处理逗号后有空格的情况
+    if (template[i] === ',') {
+      const rest = template.substring(i + 1).trimStart()
+      if (rest.startsWith('{') || rest.startsWith("'") || rest.startsWith('"')) {
+        configStart = i
+        break
+      }
+    }
+  }
+  
+  if (configStart === -1) {
+    return { url: template, options: {} }
+  }
+  
+  const url = template.substring(0, configStart)
+  let configStr = template.substring(configStart + 1).trim()
+  
+  try {
+    // Legado 使用单引号，需要转换为双引号
+    // 但要保留字符串内部的单引号
+    configStr = convertToValidJson(configStr)
+    const options = JSON.parse(configStr)
+    return { url, options }
+  } catch (e) {
+    console.warn('URL配置解析失败:', e.message, configStr?.substring(0, 100))
+    return { url: template, options: {} }
+  }
+}
+
+/**
+ * 将 Legado 的类 JSON 格式转换为标准 JSON
+ * Legado 使用单引号和一些非标准写法
+ */
+function convertToValidJson(str) {
+  if (!str) return '{}'
+  
+  let result = str.trim()
+  
+  // 如果已经是有效的 JSON，直接返回
+  try {
+    JSON.parse(result)
+    return result
+  } catch {
+    // 继续处理
+  }
+  
+  // 将外层单引号包裹的键值对转换为双引号
+  // 'key': 'value' => "key": "value"
+  // 但要避免修改内层已经是双引号的字符串
+  
+  // 简单策略：将单引号替换为双引号，但保护内部的转义
+  // 这对大多数 Legado 源格式有效
+  result = result
+    .replace(/:\s*'([^']*?)'/g, ': "$1"')  // 'value' => "value"
+    .replace(/'([^']+?)':/g, '"$1":')       // 'key': => "key":
+  
+  // 处理换行和多余空格
+  result = result.replace(/\n\s*/g, ' ')
+  
+  return result
+}
+
+/**
  * 使用第三方书源搜索
  * @param {Object} source - 书源配置
  * @param {string} keyword - 搜索关键词
  * @param {number} page - 页码
  */
 export async function searchWithSource(source, keyword, page = 1) {
-  if (!source || !source.searchUrl) {
-    throw new Error('书源配置无效或不支持搜索')
+  if (!source) {
+    throw new Error('书源配置无效')
+  }
+  
+  // 尝试多种方式获取搜索URL
+  const raw = source._raw || {}
+  const ruleSearch = raw.ruleSearch || {}
+  
+  let searchUrlTemplate = source.searchUrl || 
+                          source.ruleSearchUrl ||
+                          raw.searchUrl ||
+                          raw.ruleSearchUrl ||
+                          ruleSearch.searchUrl ||
+                          ''
+  
+  if (!searchUrlTemplate) {
+    throw new Error('书源配置无效或不支持搜索（缺少searchUrl）')
   }
   
   try {
+    // 提取 URL 和配置选项（如 charset）
+    const { url: cleanUrlTemplate, options: urlOptions } = parseUrlTemplate(searchUrlTemplate)
+    
     // 构建搜索URL
-    const searchUrl = resolveUrlTemplate(source.searchUrl, {
+    const searchUrl = resolveUrlTemplate(cleanUrlTemplate, {
       key: keyword,
       page: page,
       pageSize: 20
     })
     
-    const fullUrl = resolveUrl(source.sourceUrl || source.bookSourceUrl, searchUrl)
+    const baseUrl = source.sourceUrl || source.bookSourceUrl || raw.sourceUrl || raw.bookSourceUrl || ''
+    const fullUrl = resolveUrl(baseUrl, searchUrl)
     
-    // 判断返回类型
-    const isJsonResponse = source.searchUrl.includes('.json') || 
+    // 判断返回类型 - POST 请求或 JSONPath 规则通常意味着 JSON 响应
+    const isJsonResponse = cleanUrlTemplate.includes('.json') || 
+                           urlOptions.method === 'POST' ||
                            source.ruleSearchList?.startsWith('$.') ||
-                           source.searchList?.startsWith('$.')
+                           source.searchList?.startsWith('$.') ||
+                           ruleSearch.bookList?.startsWith('$.')
+    
+    // 处理 POST 请求体中的模板变量
+    let requestBody = urlOptions.body || null
+    if (requestBody) {
+      requestBody = requestBody
+        .replace(/\{\{key\}\}/g, keyword)
+        .replace(/\{\{page\}\}/g, String(page))
+        .replace(/\{\{pageSize\}\}/g, '20')
+    }
     
     const html = await fetchUrl(fullUrl, { 
-      responseType: isJsonResponse ? 'json' : 'text' 
+      responseType: isJsonResponse ? 'json' : 'text',
+      method: urlOptions.method || 'GET',
+      body: requestBody,
+      headers: urlOptions.headers || {},
+      charset: urlOptions.charset  // 传递 charset 配置
     })
     
     // 解析搜索结果列表
-    const listRule = source.ruleSearchList || source.searchList
+    const listRule = source.ruleSearchList || source.searchList || ruleSearch.bookList || ruleSearch.list || ''
     let items = []
     
     if (isJsonResponse) {

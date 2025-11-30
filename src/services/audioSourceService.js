@@ -1,11 +1,10 @@
 /**
  * 多听书源搜索服务
- * 支持 B站、喜马拉雅等多个音频平台
+ * 支持 B站、喜马拉雅等平台
  */
 
 import { Capacitor } from '@capacitor/core'
 import { httpGet } from './httpService'
-import { searchVideos as searchBilibili } from './bilibiliService'
 
 const isNative = Capacitor.isNativePlatform()
 
@@ -128,84 +127,8 @@ export async function getXimalayaPlayUrl(trackId) {
   }
 }
 
-/**
- * 蜻蜓FM搜索
- */
-export async function searchQingting(keyword, page = 1) {
-  try {
-    const url = isNative
-      ? `https://search.qingting.fm/v3/search?k=${encodeURIComponent(keyword)}&page=${page}&pagesize=20&type=0`
-      : `/api/qingting/v3/search?k=${encodeURIComponent(keyword)}&page=${page}&pagesize=20&type=0`
-    
-    const data = await fetchSearch(url)
-    
-    if (data.errorno !== 0) {
-      throw new Error(data.errormsg || '搜索失败')
-    }
-    
-    const items = data.data?.data || []
-    
-    return {
-      total: data.data?.total || 0,
-      page,
-      results: items.filter(item => item.type === 'channel_ondemand').map(item => ({
-        id: `qingting-${item.id}`,
-        sourceType: 'qingting',
-        channelId: item.id,
-        title: item.title,
-        cover: item.cover,
-        author: item.podcaster?.name || item.author,
-        playCount: item.playcount,
-        category: item.category_name,
-        description: item.description
-      }))
-    }
-  } catch (error) {
-    console.error('蜻蜓FM搜索失败:', error)
-    throw error
-  }
-}
-
-/**
- * 统一搜索接口
- * @param {string} keyword - 搜索关键词
- * @param {string} sourceType - 源类型: bilibili | ximalaya | qingting | all
- * @param {object} options - 搜索选项
- */
-export async function searchAudio(keyword, sourceType = 'bilibili', options = {}) {
-  switch (sourceType) {
-    case 'bilibili':
-      return await searchBilibili(keyword, options)
-    
-    case 'ximalaya':
-      return await searchXimalaya(keyword, options.page || 1)
-    
-    case 'qingting':
-      return await searchQingting(keyword, options.page || 1)
-    
-    case 'all':
-      // 聚合搜索（并行请求多个源）
-      const results = await Promise.allSettled([
-        searchBilibili(keyword, options),
-        searchXimalaya(keyword, options.page || 1),
-        searchQingting(keyword, options.page || 1)
-      ])
-      
-      return {
-        bilibili: results[0].status === 'fulfilled' ? results[0].value : null,
-        ximalaya: results[1].status === 'fulfilled' ? results[1].value : null,
-        qingting: results[2].status === 'fulfilled' ? results[2].value : null
-      }
-    
-    default:
-      throw new Error(`不支持的源类型: ${sourceType}`)
-  }
-}
-
 export default {
-  searchAudio,
   searchXimalaya,
-  searchQingting,
   getXimalayaAlbumTracks,
   getXimalayaPlayUrl
 }

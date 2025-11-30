@@ -1,12 +1,16 @@
 <script setup>
 import { useRoute } from 'vue-router'
-import { Flower2, Clock, ListTodo, Settings, Headphones, Globe } from 'lucide-vue-next'
+import { Flower2, Clock, ListTodo, Settings, BookOpen, Globe } from 'lucide-vue-next'
+import GlobalAudioPlayer from './components/GlobalAudioPlayer.vue'
 
 const route = useRoute()
 </script>
 
 <template>
   <div class="min-h-screen bg-farm-50 pb-24">
+    <!-- 全局B站音频播放器（包含隐藏audio元素和迷你播放器） -->
+    <GlobalAudioPlayer />
+    
     <!-- 主要内容区域，在线听书页保持保活，切页不打断播放 -->
     <router-view v-slot="{ Component, route: currentRoute }">
       <transition name="fade" mode="out-in">
@@ -15,7 +19,7 @@ const route = useRoute()
           :is="Component" 
           :key="currentRoute.fullPath"
         />
-        <KeepAlive v-else include="OnlinePlayer">
+        <KeepAlive v-else :include="['OnlinePlayer', 'BookSourcePlayer']">
           <component :is="Component" />
         </KeepAlive>
       </transition>
@@ -38,8 +42,8 @@ const route = useRoute()
           <ListTodo :size="24" stroke-width="2.5" />
         </router-link>
 
-        <router-link to="/audio" class="flex flex-col items-center p-2 text-farm-400 hover:text-nature-600 transition-colors" :class="{ '!text-nature-600': route.path === '/audio' }">
-          <Headphones :size="24" stroke-width="2.5" />
+        <router-link to="/audio" class="flex flex-col items-center p-2 text-farm-400 hover:text-purple-600 transition-colors" :class="{ '!text-purple-600': route.path === '/audio' }">
+          <BookOpen :size="24" stroke-width="2.5" />
         </router-link>
 
         <router-link to="/online" class="flex flex-col items-center p-2 text-farm-400 hover:text-nature-600 transition-colors" :class="{ '!text-nature-600': route.path === '/online' }">

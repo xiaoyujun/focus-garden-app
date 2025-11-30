@@ -9,7 +9,7 @@ import Garden from './views/Garden.vue'
 import Focus from './views/Focus.vue'
 import Todos from './views/Todos.vue'
 import Settings from './views/Settings.vue'
-import AudioPlayer from './views/AudioPlayer.vue'
+import BookSourcePlayer from './views/BookSourcePlayer.vue'
 import OnlinePlayer from './views/OnlinePlayer.vue'
 
 const routes = [
@@ -17,7 +17,12 @@ const routes = [
   { path: '/focus', component: Focus },
   { path: '/todos', component: Todos },
   { path: '/settings', component: Settings },
-  { path: '/audio', component: AudioPlayer },
+  { 
+    path: '/audio', 
+    component: BookSourcePlayer,
+    name: 'BookSourcePlayer',
+    meta: { keepAlive: true } 
+  },
   { 
     path: '/online', 
     component: OnlinePlayer,

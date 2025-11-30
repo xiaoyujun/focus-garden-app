@@ -1,0 +1,343 @@
+/**
+ * B站在线音频全局播放状态管理
+ * 实现跨页面播放、后台播放
+ */
+import { defineStore } from 'pinia'
+import { ref, computed, watch } from 'vue'
+
+const STORAGE_KEY = 'bilibili-player-state'
+const PROGRESS_STORAGE_KEY = 'bilibili-audio-progress'
+const PROGRESS_SAVE_INTERVAL = 5000
+
+export const useOnlineAudioStore = defineStore('onlineAudio', () => {
+  // ===== 核心状态 =====
+  const audioElement = ref(null)        // 全局 audio 元素引用
+  const currentVideo = ref(null)        // 当前视频信息
+  const currentPlaylist = ref([])       // 当前播放列表
+  const currentIndex = ref(-1)          // 当前播放索引
+  const isPlaying = ref(false)          // 是否正在播放
+  const isLoading = ref(false)          // 是否正在加载
+  const currentTime = ref(0)            // 当前播放时间
+  const duration = ref(0)               // 总时长
+  const volume = ref(1)                 // 音量
+  const playbackRate = ref(1)           // 播放速度
+  const error = ref('')                 // 错误信息
+  
+  // 进度记忆
+  const progressMap = ref({})
+  let lastProgressSave = 0
+
+  // ===== 计算属性 =====
+  const currentTrack = computed(() => {
+    if (currentIndex.value >= 0 && currentIndex.value < currentPlaylist.value.length) {
+      return currentPlaylist.value[currentIndex.value]
+    }
+    return null
+  })
+
+  const hasTrack = computed(() => currentTrack.value !== null)
+
+  const progress = computed(() => {
+    if (duration.value === 0) return 0
+    return (currentTime.value / duration.value) * 100
+  })
+
+  // 格式化时间
+  function formatTime(seconds) {
+    if (!seconds || isNaN(seconds)) return '00:00'
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = Math.floor(seconds % 60)
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+    }
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }
+
+  const formattedCurrentTime = computed(() => formatTime(currentTime.value))
+  const formattedDuration = computed(() => formatTime(duration.value))
+
+  // ===== 本地存储 =====
+  function loadFromStorage() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEY)
+      if (data) {
+        const parsed = JSON.parse(data)
+        volume.value = parsed.volume ?? 1
+        playbackRate.value = parsed.playbackRate ?? 1
+        // 恢复播放状态（但不自动播放）
+        if (parsed.currentVideo) {
+          currentVideo.value = parsed.currentVideo
+          currentPlaylist.value = parsed.currentPlaylist || []
+          currentIndex.value = parsed.currentIndex ?? -1
+        }
+      }
+      
+      const progressData = localStorage.getItem(PROGRESS_STORAGE_KEY)
+      if (progressData) {
+        progressMap.value = JSON.parse(progressData)
+      }
+    } catch (e) {
+      console.error('加载B站播放状态失败:', e)
+    }
+  }
+
+  function saveToStorage() {
+    try {
+      const data = {
+        volume: volume.value,
+        playbackRate: playbackRate.value,
+        currentVideo: currentVideo.value,
+        currentPlaylist: currentPlaylist.value,
+        currentIndex: currentIndex.value
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    } catch (e) {
+      console.error('保存B站播放状态失败:', e)
+    }
+  }
+
+  function saveProgressToStorage() {
+    try {
+      localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progressMap.value))
+    } catch (e) {
+      console.error('保存播放进度失败:', e)
+    }
+  }
+
+  // 监听变化自动保存
+  watch([volume, playbackRate, currentVideo, currentPlaylist, currentIndex], saveToStorage, { deep: true })
+
+  // ===== 进度记忆 =====
+  function getTrackKey(track) {
+    if (!track) return ''
+    const bvid = track.bvid || currentVideo.value?.bvid || 'unknown'
+    const cid = track.cid || '0'
+    return `bilibili:${bvid}:${cid}`
+  }
+
+  function saveProgress(force = false) {
+    const track = currentTrack.value
+    if (!track || !audioElement.value) return
+    
+    const now = Date.now()
+    if (!force && now - lastProgressSave < PROGRESS_SAVE_INTERVAL) return
+    
+    const key = getTrackKey(track)
+    if (!key) return
+    
+    progressMap.value[key] = {
+      position: Math.floor(audioElement.value.currentTime || 0),
+      duration: Math.floor(audioElement.value.duration || duration.value || 0),
+      updatedAt: new Date().toISOString(),
+      title: track.title
+    }
+    lastProgressSave = now
+    saveProgressToStorage()
+  }
+
+  function getSavedProgress(track) {
+    const key = getTrackKey(track)
+    return progressMap.value[key]?.position || 0
+  }
+
+  function clearTrackProgress(track) {
+    const key = getTrackKey(track)
+    if (key && progressMap.value[key]) {
+      delete progressMap.value[key]
+      saveProgressToStorage()
+    }
+  }
+
+  // ===== 播放控制 =====
+  
+  // 设置 audio 元素引用
+  function setAudioElement(el) {
+    audioElement.value = el
+    if (el) {
+      el.volume = volume.value
+      el.playbackRate = playbackRate.value
+    }
+  }
+
+  // 设置视频和播放列表
+  function setPlaylist(video, playlist, index = 0) {
+    currentVideo.value = video
+    currentPlaylist.value = playlist
+    currentIndex.value = index
+  }
+
+  // 播放/暂停
+  function togglePlay() {
+    if (!audioElement.value) return
+    
+    if (isPlaying.value) {
+      audioElement.value.pause()
+      isPlaying.value = false
+    } else {
+      audioElement.value.play().then(() => {
+        isPlaying.value = true
+      }).catch(e => {
+        console.error('播放失败:', e)
+      })
+    }
+  }
+
+  function play() {
+    if (!audioElement.value) return
+    audioElement.value.play().then(() => {
+      isPlaying.value = true
+    }).catch(e => {
+      if (e.name !== 'AbortError') {
+        console.error('播放失败:', e)
+      }
+    })
+  }
+
+  function pause() {
+    if (!audioElement.value) return
+    audioElement.value.pause()
+    isPlaying.value = false
+  }
+
+  // 上一曲/下一曲
+  function previousTrack() {
+    if (currentIndex.value > 0) {
+      currentIndex.value--
+    }
+  }
+
+  function nextTrack() {
+    if (currentIndex.value < currentPlaylist.value.length - 1) {
+      currentIndex.value++
+    }
+  }
+
+  // 快进/快退
+  function seek(seconds) {
+    if (!audioElement.value) return
+    audioElement.value.currentTime = Math.max(0, Math.min(
+      audioElement.value.currentTime + seconds,
+      duration.value
+    ))
+  }
+
+  function seekTo(time) {
+    if (!audioElement.value) return
+    audioElement.value.currentTime = Math.max(0, Math.min(time, duration.value))
+  }
+
+  // 设置音量
+  function setVolume(v) {
+    volume.value = Math.max(0, Math.min(1, v))
+    if (audioElement.value) {
+      audioElement.value.volume = volume.value
+    }
+  }
+
+  // 设置播放速度
+  const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+  
+  function setPlaybackRate(rate) {
+    playbackRate.value = rate
+    if (audioElement.value) {
+      audioElement.value.playbackRate = rate
+    }
+  }
+
+  function cyclePlaybackRate() {
+    const idx = playbackRates.indexOf(playbackRate.value)
+    const newRate = playbackRates[(idx + 1) % playbackRates.length]
+    setPlaybackRate(newRate)
+  }
+
+  // 更新 Media Session（系统媒体控制）
+  function updateMediaSession() {
+    if (!('mediaSession' in navigator)) return
+    
+    const track = currentTrack.value
+    if (!track) return
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title || '未知标题',
+      artist: currentVideo.value?.owner?.name || 'B站',
+      album: currentVideo.value?.title || '',
+      artwork: currentVideo.value?.cover ? [
+        { src: currentVideo.value.cover, sizes: '512x512', type: 'image/jpeg' }
+      ] : []
+    })
+
+    navigator.mediaSession.setActionHandler('play', () => play())
+    navigator.mediaSession.setActionHandler('pause', () => pause())
+    navigator.mediaSession.setActionHandler('previoustrack', () => previousTrack())
+    navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack())
+    navigator.mediaSession.setActionHandler('seekbackward', () => seek(-15))
+    navigator.mediaSession.setActionHandler('seekforward', () => seek(15))
+  }
+
+  // 清除播放
+  function clearPlayback() {
+    saveProgress(true)
+    if (audioElement.value) {
+      audioElement.value.pause()
+      audioElement.value.removeAttribute('src')
+      audioElement.value.load()
+    }
+    currentVideo.value = null
+    currentPlaylist.value = []
+    currentIndex.value = -1
+    isPlaying.value = false
+    currentTime.value = 0
+    duration.value = 0
+    error.value = ''
+  }
+
+  // 初始化
+  loadFromStorage()
+
+  return {
+    // 状态
+    audioElement,
+    currentVideo,
+    currentPlaylist,
+    currentIndex,
+    isPlaying,
+    isLoading,
+    currentTime,
+    duration,
+    volume,
+    playbackRate,
+    error,
+    progressMap,
+    
+    // 计算属性
+    currentTrack,
+    hasTrack,
+    progress,
+    formattedCurrentTime,
+    formattedDuration,
+    
+    // 常量
+    playbackRates,
+    
+    // 方法
+    setAudioElement,
+    setPlaylist,
+    togglePlay,
+    play,
+    pause,
+    previousTrack,
+    nextTrack,
+    seek,
+    seekTo,
+    setVolume,
+    setPlaybackRate,
+    cyclePlaybackRate,
+    saveProgress,
+    getSavedProgress,
+    clearTrackProgress,
+    updateMediaSession,
+    clearPlayback,
+    formatTime
+  }
+})

@@ -15,6 +15,11 @@ export const useAppStore = defineStore('app', () => {
   // 状态
   const coins = ref(0) // 金币
   const todos = ref([]) // 待办事项
+  const todoGroups = ref([
+    { id: 'general', name: '待办', icon: '📝', color: 'sky', builtin: true },
+    { id: 'housework', name: '家务', icon: '🏠', color: 'amber', builtin: true }
+  ]) // 待办分组
+  const recycleBin = ref([]) // 回收站
   const focusRecords = ref([]) // 专注记录（包括在花园的和已出售的）
   const currentFocus = ref(null) // 当前专注会话
 
@@ -155,6 +160,10 @@ export const useAppStore = defineStore('app', () => {
       if (data) {
         const parsed = JSON.parse(data)
         todos.value = parsed.todos || []
+        if (parsed.todoGroups && parsed.todoGroups.length > 0) {
+          todoGroups.value = parsed.todoGroups
+        }
+        recycleBin.value = parsed.recycleBin || []
         focusRecords.value = parsed.focusRecords || []
         coins.value = parsed.coins || 0
       }
@@ -168,6 +177,8 @@ export const useAppStore = defineStore('app', () => {
     if (typeof localStorage === 'undefined') return
     const data = {
       todos: todos.value,
+      todoGroups: todoGroups.value,
+      recycleBin: recycleBin.value,
       focusRecords: focusRecords.value,
       coins: coins.value,
       exportedAt: new Date().toISOString()
@@ -176,14 +187,15 @@ export const useAppStore = defineStore('app', () => {
   }
 
   // 监听数据变化自动保存
-  watch([todos, focusRecords, coins], saveToStorage, { deep: true })
+  watch([todos, todoGroups, recycleBin, focusRecords, coins], saveToStorage, { deep: true })
 
   // ===== 待办事项相关 =====
-  function addTodo(text, category = 'general') {
+  function addTodo(text, groupId = 'general') {
     const todo = {
       id: Date.now().toString(),
       text,
-      category,
+      groupId,
+      category: groupId,
       completed: false,
       createdAt: new Date().toISOString()
     }
@@ -194,6 +206,11 @@ export const useAppStore = defineStore('app', () => {
     const todo = todos.value.find(t => t.id === id)
     if (todo) {
       todo.completed = !todo.completed
+      if (todo.completed) {
+        todo.completedAt = new Date().toISOString()
+      } else {
+        delete todo.completedAt
+      }
     }
   }
 
@@ -201,8 +218,77 @@ export const useAppStore = defineStore('app', () => {
     todos.value = todos.value.filter(t => t.id !== id)
   }
 
+  function moveToRecycleBin(id) {
+    const todo = todos.value.find(t => t.id === id)
+    if (todo) {
+      recycleBin.value.push({
+        ...todo,
+        deletedAt: new Date().toISOString()
+      })
+      todos.value = todos.value.filter(t => t.id !== id)
+    }
+  }
+
   function clearCompletedTodos() {
+    const completed = todos.value.filter(t => t.completed)
+    completed.forEach(todo => {
+      recycleBin.value.push({
+        ...todo,
+        deletedAt: new Date().toISOString()
+      })
+    })
     todos.value = todos.value.filter(t => !t.completed)
+  }
+
+  function restoreFromRecycleBin(id) {
+    const item = recycleBin.value.find(t => t.id === id)
+    if (item) {
+      const { deletedAt, ...todo } = item
+      todos.value = [todo, ...todos.value]
+      recycleBin.value = recycleBin.value.filter(t => t.id !== id)
+    }
+  }
+
+  function deleteFromRecycleBin(id) {
+    recycleBin.value = recycleBin.value.filter(t => t.id !== id)
+  }
+
+  function clearRecycleBin() {
+    recycleBin.value = []
+  }
+
+  // ===== 待办分组管理 =====
+  function addTodoGroup(name, icon = '📁', color = 'gray') {
+    const group = {
+      id: Date.now().toString(),
+      name,
+      icon,
+      color,
+      builtin: false,
+      createdAt: new Date().toISOString()
+    }
+    todoGroups.value.push(group)
+    return group
+  }
+
+  function updateTodoGroup(id, updates) {
+    const group = todoGroups.value.find(g => g.id === id)
+    if (group && !group.builtin) {
+      Object.assign(group, updates)
+    }
+  }
+
+  function deleteTodoGroup(id) {
+    const group = todoGroups.value.find(g => g.id === id)
+    if (group && !group.builtin) {
+      todos.value.forEach(todo => {
+        if (todo.groupId === id) {
+          todo.groupId = 'general'
+          todo.category = 'general'
+        }
+      })
+      todoGroups.value = todoGroups.value.filter(g => g.id !== id)
+    }
   }
 
   // ===== 专注会话相关 =====
@@ -322,10 +408,12 @@ export const useAppStore = defineStore('app', () => {
   function exportData() {
     const data = {
       todos: todos.value,
+      todoGroups: todoGroups.value,
+      recycleBin: recycleBin.value,
       focusRecords: focusRecords.value,
       coins: coins.value,
       exportedAt: new Date().toISOString(),
-      version: '2.0'
+      version: '2.1'
     }
     return JSON.stringify(data, null, 2)
   }
@@ -334,6 +422,8 @@ export const useAppStore = defineStore('app', () => {
     try {
       const data = JSON.parse(jsonString)
       if (data.todos) todos.value = data.todos
+      if (data.todoGroups) todoGroups.value = data.todoGroups
+      if (data.recycleBin) recycleBin.value = data.recycleBin
       if (data.focusRecords) focusRecords.value = data.focusRecords
       if (data.coins !== undefined) coins.value = data.coins
       saveToStorage()
@@ -345,6 +435,11 @@ export const useAppStore = defineStore('app', () => {
 
   function clearAllData() {
     todos.value = []
+    todoGroups.value = [
+      { id: 'general', name: '待办', icon: '📝', color: 'sky', builtin: true },
+      { id: 'housework', name: '家务', icon: '🏠', color: 'amber', builtin: true }
+    ]
+    recycleBin.value = []
     focusRecords.value = []
     coins.value = 0
     currentFocus.value = null
@@ -384,6 +479,8 @@ export const useAppStore = defineStore('app', () => {
     // 状态
     coins,
     todos,
+    todoGroups,
+    recycleBin,
     focusRecords,
     currentFocus,
     // 计算属性
@@ -403,7 +500,14 @@ export const useAppStore = defineStore('app', () => {
     addTodo,
     toggleTodo,
     deleteTodo,
+    moveToRecycleBin,
     clearCompletedTodos,
+    restoreFromRecycleBin,
+    deleteFromRecycleBin,
+    clearRecycleBin,
+    addTodoGroup,
+    updateTodoGroup,
+    deleteTodoGroup,
     startFocus,
     completeFocus,
     cancelFocus,

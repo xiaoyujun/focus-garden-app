@@ -281,6 +281,7 @@ function parsePlayUrl(data) {
 
 /**
  * 获取最佳音频流URL（用于听书场景）
+ * 返回带有备用URL的对象，便于重试
  * @param {string} bvid - BV号
  * @param {number} cid - 视频cid
  * @returns {Promise<string>} - 音频URL
@@ -291,10 +292,16 @@ export async function getBestAudioUrl(bvid, cid) {
     const playInfo = await getPlayUrl(bvid, cid)
     
     if (playInfo.audios && playInfo.audios.length > 0) {
-      // 返回最高质量的音频
-      const bestAudio = playInfo.audios.reduce((best, current) => 
-        current.bandwidth > best.bandwidth ? current : best
-      )
+      // 按带宽排序，返回最高质量的音频
+      const sortedAudios = [...playInfo.audios].sort((a, b) => b.bandwidth - a.bandwidth)
+      const bestAudio = sortedAudios[0]
+      
+      // 如果有备用URL，尝试找一个不同域名的
+      if (bestAudio.backupUrl && bestAudio.backupUrl.length > 0) {
+        // 优先返回主URL，备用URL作为fallback存储
+        console.log('获取到音频URL，有', bestAudio.backupUrl.length, '个备用地址')
+      }
+      
       return bestAudio.url
     }
     
@@ -314,6 +321,54 @@ export async function getBestAudioUrl(bvid, cid) {
   }
   
   throw new Error('无法获取音频地址，请稍后重试')
+}
+
+/**
+ * 获取音频URL列表（包含备用地址）
+ * @param {string} bvid - BV号
+ * @param {number} cid - 视频cid
+ * @returns {Promise<string[]>} - 音频URL列表，第一个为首选
+ */
+export async function getAudioUrls(bvid, cid) {
+  const urls = []
+  
+  try {
+    const playInfo = await getPlayUrl(bvid, cid)
+    
+    if (playInfo.audios && playInfo.audios.length > 0) {
+      // 按带宽排序
+      const sortedAudios = [...playInfo.audios].sort((a, b) => b.bandwidth - a.bandwidth)
+      
+      // 收集所有URL（主URL + 备用URL）
+      for (const audio of sortedAudios) {
+        if (audio.url) urls.push(audio.url)
+        if (audio.backupUrl) {
+          urls.push(...audio.backupUrl)
+        }
+      }
+    }
+    
+    // durl格式的URL
+    if (playInfo.durl && playInfo.durl.length > 0) {
+      for (const d of playInfo.durl) {
+        if (d.url) urls.push(d.url)
+        if (d.backupUrl) urls.push(...d.backupUrl)
+      }
+    }
+  } catch (error) {
+    console.warn('官方API获取失败:', error.message)
+  }
+  
+  // 添加第三方解析结果
+  try {
+    const thirdPartyUrl = await getPlayUrlFromThirdParty(bvid, cid)
+    if (thirdPartyUrl) urls.push(thirdPartyUrl)
+  } catch (error) {
+    // 忽略
+  }
+  
+  // 去重
+  return [...new Set(urls)]
 }
 
 /**
@@ -456,6 +511,7 @@ export default {
   getVideoInfo,
   getPlayUrl,
   getBestAudioUrl,
+  getAudioUrls,
   getUploaderVideos,
   getVideoSeries,
   searchVideos,
