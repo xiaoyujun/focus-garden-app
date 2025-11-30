@@ -9,7 +9,10 @@ import {
   extractBilibiliId,
   getFavoriteList,
   getFavoriteContent,
-  getHistory
+  getHistory,
+  getRecommendVideos,
+  getPopularVideos,
+  getBestAudioUrl
 } from '../services/bilibiliService'
 import { 
   getAuthInfo, 
@@ -22,8 +25,10 @@ import {
   Search, Play, Pause, SkipBack, SkipForward, 
   Volume2, VolumeX, Heart, Clock,
   List, X, RotateCcw, RotateCw, Trash2, User,
-  SlidersHorizontal, Folder, History, ChevronRight, Loader2
+  SlidersHorizontal, Folder, History, ChevronRight, Loader2,
+  Home, Flame, ExternalLink, Download, MoreVertical, RefreshCw
 } from 'lucide-vue-next'
+import { Capacitor } from '@capacitor/core'
 
 defineOptions({ name: 'OnlinePlayer' })
 
@@ -39,7 +44,22 @@ const searchError = ref('')
 // UI 状态
 const showPlaylist = ref(false)
 const showLoginModal = ref(false)
-const activeTab = ref('search')      // search | history | favorites | biliFav | biliHistory
+const activeTab = ref('recommend')   // recommend | search | history | favorites | biliFav | biliHistory
+const showVideoMenu = ref(null)      // 当前显示菜单的视频bvid
+
+// 推荐相关状态
+const recommendList = ref([])         // 首页推荐
+const popularList = ref([])           // 热门视频
+const recommendFreshIdx = ref(1)      // 推荐分页索引
+const popularPage = ref(1)            // 热门分页
+const isRecommendLoading = ref(false)
+const isPopularLoading = ref(false)
+const hasMorePopular = ref(true)
+const recommendError = ref('')
+const recommendMode = ref('recommend') // recommend | popular
+
+// 下载相关状态
+const isDownloading = ref(null)        // 正在下载的视频bvid
 
 // 搜索筛选状态
 const showSearchFilter = ref(false)
@@ -97,6 +117,9 @@ const biliHistoryCursor = ref({ max: 0, viewAt: 0 })
 const isHistoryLoading = ref(false)
 const hasMoreHistory = ref(true)
 const historyError = ref('')
+
+// 判断是否是原生平台
+const isNativePlatform = Capacitor.isNativePlatform()
 
 // 刷新登录状态
 function refreshLoginStatus() {
@@ -568,6 +591,220 @@ function switchToBiliHistory() {
   }
 }
 
+// ===== 推荐视频相关 =====
+
+// 加载首页推荐
+async function loadRecommendVideos(refresh = false) {
+  if (isRecommendLoading.value) return
+  
+  isRecommendLoading.value = true
+  recommendError.value = ''
+  
+  try {
+    if (refresh) {
+      recommendFreshIdx.value = 1
+      recommendList.value = []
+    }
+    
+    const result = await getRecommendVideos(recommendFreshIdx.value, 12)
+    
+    if (refresh) {
+      recommendList.value = result.list
+    } else {
+      recommendList.value = [...recommendList.value, ...result.list]
+    }
+    
+    recommendFreshIdx.value = result.freshIdx
+  } catch (error) {
+    recommendError.value = error.message || '加载推荐失败'
+    console.error('加载推荐失败:', error)
+  } finally {
+    isRecommendLoading.value = false
+  }
+}
+
+// 加载热门视频
+async function loadPopularVideos(loadMore = false) {
+  if (isPopularLoading.value) return
+  
+  isPopularLoading.value = true
+  recommendError.value = ''
+  
+  try {
+    if (!loadMore) {
+      popularPage.value = 1
+      popularList.value = []
+    }
+    
+    const result = await getPopularVideos(popularPage.value, 20)
+    
+    if (loadMore) {
+      popularList.value = [...popularList.value, ...result.list]
+    } else {
+      popularList.value = result.list
+    }
+    
+    popularPage.value++
+    hasMorePopular.value = result.hasMore
+  } catch (error) {
+    recommendError.value = error.message || '加载热门视频失败'
+    console.error('加载热门失败:', error)
+  } finally {
+    isPopularLoading.value = false
+  }
+}
+
+// 切换推荐模式
+function switchRecommendMode(mode) {
+  recommendMode.value = mode
+  if (mode === 'recommend' && !recommendList.value.length) {
+    loadRecommendVideos()
+  } else if (mode === 'popular' && !popularList.value.length) {
+    loadPopularVideos()
+  }
+}
+
+// 切换到推荐标签
+function switchToRecommend() {
+  activeTab.value = 'recommend'
+  if (recommendMode.value === 'recommend' && !recommendList.value.length) {
+    loadRecommendVideos()
+  } else if (recommendMode.value === 'popular' && !popularList.value.length) {
+    loadPopularVideos()
+  }
+}
+
+// ===== 视频操作菜单 =====
+
+// 切换视频菜单
+function toggleVideoMenu(bvid) {
+  if (showVideoMenu.value === bvid) {
+    showVideoMenu.value = null
+  } else {
+    showVideoMenu.value = bvid
+  }
+}
+
+// 关闭视频菜单
+function closeVideoMenu() {
+  showVideoMenu.value = null
+}
+
+// 在浏览器/B站APP打开视频
+function openInBrowser(bvid) {
+  const url = `https://www.bilibili.com/video/${bvid}`
+  window.open(url, '_blank')
+  closeVideoMenu()
+}
+
+// 下载B站视频音频
+async function downloadVideo(item) {
+  if (isDownloading.value === item.bvid) return
+  
+  isDownloading.value = item.bvid
+  closeVideoMenu()
+  
+  try {
+    // 获取视频详情
+    const videoInfo = await getVideoInfo(item.bvid)
+    const cid = videoInfo.cid
+    
+    // 获取音频URL
+    const audioUrl = await getBestAudioUrl(item.bvid, cid)
+    
+    if (!audioUrl) {
+      throw new Error('无法获取音频地址')
+    }
+    
+    // 创建下载链接
+    const fileName = `${item.title.replace(/[\\/:*?"<>|]/g, '_')}.m4a`
+    
+    if (isNativePlatform) {
+      // 原生平台：使用 Capacitor Filesystem
+      const { Filesystem, Directory } = await import('@capacitor/filesystem')
+      const { CapacitorHttp } = await import('@capacitor/core')
+      
+      // 创建下载目录
+      const downloadDir = 'FocusGarden/BilibiliAudio'
+      try {
+        await Filesystem.mkdir({
+          path: downloadDir,
+          directory: Directory.Documents,
+          recursive: true
+        })
+      } catch (e) {
+        // 目录可能已存在
+      }
+      
+      // 下载文件
+      const response = await CapacitorHttp.get({
+        url: audioUrl,
+        responseType: 'blob',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
+          'Referer': 'https://www.bilibili.com/'
+        }
+      })
+      
+      if (response.status !== 200) {
+        throw new Error(`下载失败: HTTP ${response.status}`)
+      }
+      
+      await Filesystem.writeFile({
+        path: `${downloadDir}/${fileName}`,
+        data: response.data,
+        directory: Directory.Documents
+      })
+      
+      alert(`下载完成: ${fileName}`)
+    } else {
+      // Web端：通过代理下载
+      const proxyUrl = `/api/bili-proxy?url=${encodeURIComponent(audioUrl)}`
+      const response = await fetch(proxyUrl)
+      
+      if (!response.ok) {
+        throw new Error(`下载失败: HTTP ${response.status}`)
+      }
+      
+      const blob = await response.blob()
+      const downloadUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = downloadUrl
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(downloadUrl)
+    }
+  } catch (error) {
+    console.error('下载失败:', error)
+    alert(`下载失败: ${error.message}`)
+  } finally {
+    isDownloading.value = null
+  }
+}
+
+// 格式化播放量
+function formatPlayCount(count) {
+  if (!count) return '0'
+  if (count >= 10000) {
+    return (count / 10000).toFixed(1) + '万'
+  }
+  return count.toString()
+}
+
+// 格式化时长（秒转换为时分秒）
+function formatDuration(seconds) {
+  if (!seconds || isNaN(seconds)) return '00:00'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+}
+
 // 键盘快捷键
 function handleKeyboard(e) {
   if (e.target.tagName === 'INPUT') return
@@ -590,6 +827,8 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyboard)
   // 初始化登录状态
   refreshLoginStatus()
+  // 加载推荐视频
+  loadRecommendVideos()
 })
 
 onUnmounted(() => {
@@ -757,6 +996,14 @@ onUnmounted(() => {
       <!-- 标签切换 -->
       <div class="flex p-1 bg-white/50 backdrop-blur-sm rounded-2xl mb-6 border border-white/50 overflow-x-auto scrollbar-hide">
         <button 
+          @click="switchToRecommend"
+          class="flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap"
+          :class="activeTab === 'recommend' ? 'bg-white text-pink-600 shadow-sm shadow-pink-100' : 'text-gray-400 hover:text-gray-600'"
+        >
+          <Home :size="16" />
+          推荐
+        </button>
+        <button 
           @click="activeTab = 'search'"
           class="flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap"
           :class="activeTab === 'search' ? 'bg-white text-pink-600 shadow-sm shadow-pink-100' : 'text-gray-400 hover:text-gray-600'"
@@ -802,14 +1049,239 @@ onUnmounted(() => {
       </div>
 
       <!-- 错误提示 -->
-      <div v-if="searchError" class="mb-4 p-4 bg-red-50 border border-red-100 rounded-2xl shadow-sm">
+      <div v-if="searchError || recommendError" class="mb-4 p-4 bg-red-50 border border-red-100 rounded-2xl shadow-sm">
         <p class="text-red-600 text-sm mb-2 font-medium flex items-center gap-2">
           <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-          {{ searchError }}
+          {{ searchError || recommendError }}
         </p>
         <p class="text-xs text-red-400 ml-3.5">
           提示：如果搜索失败，可以尝试直接粘贴B站视频链接（如 BV1xxx 或完整URL）
         </p>
+      </div>
+
+      <!-- 推荐内容 -->
+      <div v-if="activeTab === 'recommend'" class="space-y-4">
+        <!-- 推荐/热门切换 -->
+        <div class="flex gap-2 mb-4">
+          <button 
+            @click="switchRecommendMode('recommend')"
+            class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+            :class="recommendMode === 'recommend' ? 'bg-pink-500 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-50'"
+          >
+            <Home :size="16" />
+            为你推荐
+          </button>
+          <button 
+            @click="switchRecommendMode('popular')"
+            class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+            :class="recommendMode === 'popular' ? 'bg-pink-500 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-50'"
+          >
+            <Flame :size="16" />
+            热门视频
+          </button>
+          <button 
+            @click="recommendMode === 'recommend' ? loadRecommendVideos(true) : loadPopularVideos()"
+            :disabled="isRecommendLoading || isPopularLoading"
+            class="ml-auto p-2 rounded-xl text-gray-400 hover:text-pink-500 hover:bg-pink-50 transition-colors disabled:opacity-50"
+            title="刷新"
+          >
+            <RefreshCw :size="18" :class="{ 'animate-spin': isRecommendLoading || isPopularLoading }" />
+          </button>
+        </div>
+
+        <!-- 推荐视频列表 -->
+        <template v-if="recommendMode === 'recommend'">
+          <div v-if="isRecommendLoading && !recommendList.length" class="text-center py-12">
+            <Loader2 :size="24" class="text-pink-500 animate-spin mx-auto mb-3" />
+            <p class="text-gray-400 text-sm">加载推荐中...</p>
+          </div>
+
+          <div v-else class="grid grid-cols-2 gap-3">
+            <div 
+              v-for="item in recommendList" 
+              :key="item.bvid"
+              class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-50 group"
+            >
+              <!-- 封面 -->
+              <div class="relative aspect-video cursor-pointer" @click="handlePlayItem(item)">
+                <img 
+                  :src="item.cover" 
+                  :alt="item.title"
+                  referrerpolicy="no-referrer"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+                <span class="absolute bottom-1 right-1 px-1.5 py-0.5 text-[10px] rounded-md text-white bg-black/60 backdrop-blur-[2px]">
+                  {{ formatDuration(item.duration) }}
+                </span>
+                <!-- 推荐理由 -->
+                <span v-if="item.rcmdReason" class="absolute top-1 left-1 px-1.5 py-0.5 text-[10px] rounded-md text-white bg-pink-500/90 backdrop-blur-[2px]">
+                  {{ item.rcmdReason }}
+                </span>
+              </div>
+              <!-- 信息 -->
+              <div class="p-2.5">
+                <h3 
+                  class="font-medium text-gray-800 line-clamp-2 text-xs leading-snug mb-2 cursor-pointer hover:text-pink-600"
+                  @click="handlePlayItem(item)"
+                >
+                  {{ item.title }}
+                </h3>
+                <div class="flex items-center justify-between">
+                  <button 
+                    @click.stop="openUploaderSpace(item.mid, item.author)"
+                    class="text-[10px] text-gray-400 flex items-center gap-1 hover:text-pink-500 truncate max-w-[60%]"
+                  >
+                    <User :size="10" />
+                    <span class="truncate">{{ item.author }}</span>
+                  </button>
+                  <!-- 操作按钮 -->
+                  <div class="flex items-center gap-1">
+                    <span class="text-[10px] text-gray-400">{{ formatPlayCount(item.play) }}</span>
+                    <div class="relative">
+                      <button 
+                        @click.stop="toggleVideoMenu(item.bvid)"
+                        class="p-1 rounded-full text-gray-400 hover:text-pink-500 hover:bg-pink-50 transition-colors"
+                      >
+                        <MoreVertical :size="14" />
+                      </button>
+                      <!-- 下拉菜单 -->
+                      <div 
+                        v-if="showVideoMenu === item.bvid"
+                        class="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20 min-w-[120px]"
+                      >
+                        <button 
+                          @click.stop="openInBrowser(item.bvid)"
+                          class="w-full px-3 py-2 text-left text-xs text-gray-600 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-2"
+                        >
+                          <ExternalLink :size="14" />
+                          在浏览器打开
+                        </button>
+                        <button 
+                          @click.stop="downloadVideo(item)"
+                          :disabled="isDownloading === item.bvid"
+                          class="w-full px-3 py-2 text-left text-xs text-gray-600 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-2 disabled:opacity-50"
+                        >
+                          <Download :size="14" :class="{ 'animate-bounce': isDownloading === item.bvid }" />
+                          {{ isDownloading === item.bvid ? '下载中...' : '下载音频' }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 加载更多 -->
+          <div v-if="recommendList.length" class="text-center py-4">
+            <button 
+              @click="loadRecommendVideos()"
+              :disabled="isRecommendLoading"
+              class="px-6 py-2.5 text-sm text-pink-600 bg-pink-50 rounded-xl hover:bg-pink-100 disabled:opacity-50 font-medium"
+            >
+              <span v-if="isRecommendLoading" class="flex items-center gap-2">
+                <Loader2 :size="16" class="animate-spin" />
+                加载中...
+              </span>
+              <span v-else>换一批</span>
+            </button>
+          </div>
+        </template>
+
+        <!-- 热门视频列表 -->
+        <template v-if="recommendMode === 'popular'">
+          <div v-if="isPopularLoading && !popularList.length" class="text-center py-12">
+            <Loader2 :size="24" class="text-pink-500 animate-spin mx-auto mb-3" />
+            <p class="text-gray-400 text-sm">加载热门视频...</p>
+          </div>
+
+          <div v-else class="grid grid-cols-2 gap-3">
+            <div 
+              v-for="item in popularList" 
+              :key="item.bvid"
+              class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-50 group"
+            >
+              <!-- 封面 -->
+              <div class="relative aspect-video cursor-pointer" @click="handlePlayItem(item)">
+                <img 
+                  :src="item.cover" 
+                  :alt="item.title"
+                  referrerpolicy="no-referrer"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+                <span class="absolute bottom-1 right-1 px-1.5 py-0.5 text-[10px] rounded-md text-white bg-black/60 backdrop-blur-[2px]">
+                  {{ formatDuration(item.duration) }}
+                </span>
+              </div>
+              <!-- 信息 -->
+              <div class="p-2.5">
+                <h3 
+                  class="font-medium text-gray-800 line-clamp-2 text-xs leading-snug mb-2 cursor-pointer hover:text-pink-600"
+                  @click="handlePlayItem(item)"
+                >
+                  {{ item.title }}
+                </h3>
+                <div class="flex items-center justify-between">
+                  <button 
+                    @click.stop="openUploaderSpace(item.mid, item.author)"
+                    class="text-[10px] text-gray-400 flex items-center gap-1 hover:text-pink-500 truncate max-w-[60%]"
+                  >
+                    <User :size="10" />
+                    <span class="truncate">{{ item.author }}</span>
+                  </button>
+                  <!-- 操作按钮 -->
+                  <div class="flex items-center gap-1">
+                    <span class="text-[10px] text-gray-400">{{ formatPlayCount(item.play) }}</span>
+                    <div class="relative">
+                      <button 
+                        @click.stop="toggleVideoMenu(item.bvid)"
+                        class="p-1 rounded-full text-gray-400 hover:text-pink-500 hover:bg-pink-50 transition-colors"
+                      >
+                        <MoreVertical :size="14" />
+                      </button>
+                      <!-- 下拉菜单 -->
+                      <div 
+                        v-if="showVideoMenu === item.bvid"
+                        class="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20 min-w-[120px]"
+                      >
+                        <button 
+                          @click.stop="openInBrowser(item.bvid)"
+                          class="w-full px-3 py-2 text-left text-xs text-gray-600 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-2"
+                        >
+                          <ExternalLink :size="14" />
+                          在浏览器打开
+                        </button>
+                        <button 
+                          @click.stop="downloadVideo(item)"
+                          :disabled="isDownloading === item.bvid"
+                          class="w-full px-3 py-2 text-left text-xs text-gray-600 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-2 disabled:opacity-50"
+                        >
+                          <Download :size="14" :class="{ 'animate-bounce': isDownloading === item.bvid }" />
+                          {{ isDownloading === item.bvid ? '下载中...' : '下载音频' }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 加载更多 -->
+          <div v-if="popularList.length && hasMorePopular" class="text-center py-4">
+            <button 
+              @click="loadPopularVideos(true)"
+              :disabled="isPopularLoading"
+              class="px-6 py-2.5 text-sm text-pink-600 bg-pink-50 rounded-xl hover:bg-pink-100 disabled:opacity-50 font-medium"
+            >
+              <span v-if="isPopularLoading" class="flex items-center gap-2">
+                <Loader2 :size="16" class="animate-spin" />
+                加载中...
+              </span>
+              <span v-else>加载更多</span>
+            </button>
+          </div>
+        </template>
       </div>
 
       <!-- 搜索结果 -->
@@ -863,10 +1335,9 @@ onUnmounted(() => {
         <div 
           v-for="item in searchResults" 
           :key="item.bvid"
-          @click="handlePlayItem(item)"
-          class="flex gap-4 p-3 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer border border-gray-50 active:scale-[0.99]"
+          class="flex gap-4 p-3 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all border border-gray-50"
         >
-          <div class="relative flex-shrink-0">
+          <div class="relative flex-shrink-0 cursor-pointer" @click="handlePlayItem(item)">
             <img 
               :src="item.cover" 
               :alt="item.title"
@@ -882,7 +1353,7 @@ onUnmounted(() => {
             </span>
           </div>
           <div class="flex-1 min-w-0 py-0.5 flex flex-col justify-between">
-            <h3 class="font-bold text-gray-800 line-clamp-2 text-sm leading-snug">{{ item.title }}</h3>
+            <h3 class="font-bold text-gray-800 line-clamp-2 text-sm leading-snug cursor-pointer hover:text-pink-600" @click="handlePlayItem(item)">{{ item.title }}</h3>
             <div class="flex items-center justify-between mt-1">
               <button 
                 @click.stop="openUploaderSpace(item.mid, item.author)"
@@ -892,9 +1363,41 @@ onUnmounted(() => {
                 <span class="truncate max-w-[80px] group-hover:underline">{{ item.author }}</span>
                 <ChevronRight :size="12" class="opacity-0 group-hover:opacity-100 transition-opacity" />
               </button>
-              <p v-if="item.play" class="text-xs text-gray-400 flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded">
-                <span class="text-[10px]">▶</span> {{ item.play }}
-              </p>
+              <div class="flex items-center gap-2">
+                <p v-if="item.play" class="text-xs text-gray-400 flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded">
+                  <span class="text-[10px]">▶</span> {{ item.play }}
+                </p>
+                <!-- 操作按钮 -->
+                <div class="relative">
+                  <button 
+                    @click.stop="toggleVideoMenu(item.bvid)"
+                    class="p-1 rounded-full text-gray-400 hover:text-pink-500 hover:bg-pink-50 transition-colors"
+                  >
+                    <MoreVertical :size="16" />
+                  </button>
+                  <!-- 下拉菜单 -->
+                  <div 
+                    v-if="showVideoMenu === item.bvid"
+                    class="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20 min-w-[120px]"
+                  >
+                    <button 
+                      @click.stop="openInBrowser(item.bvid)"
+                      class="w-full px-3 py-2 text-left text-xs text-gray-600 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-2"
+                    >
+                      <ExternalLink :size="14" />
+                      在浏览器打开
+                    </button>
+                    <button 
+                      @click.stop="downloadVideo(item)"
+                      :disabled="isDownloading === item.bvid"
+                      class="w-full px-3 py-2 text-left text-xs text-gray-600 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <Download :size="14" :class="{ 'animate-bounce': isDownloading === item.bvid }" />
+                      {{ isDownloading === item.bvid ? '下载中...' : '下载音频' }}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1167,6 +1670,13 @@ onUnmounted(() => {
         </template>
       </div>
     </main>
+
+    <!-- 视频菜单遮罩层 -->
+    <div 
+      v-if="showVideoMenu"
+      class="fixed inset-0 z-10"
+      @click="closeVideoMenu"
+    ></div>
 
     <!-- 底部播放器（有内容时显示） -->
     <div 

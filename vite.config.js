@@ -9,6 +9,74 @@ function proxyPlugin() {
   return {
     name: 'universal-proxy',
     configureServer(server) {
+      // B站媒体代理 - 用于下载音视频
+      server.middlewares.use('/api/bili-proxy', async (req, res) => {
+        const reqUrl = new URL(req.url, 'http://localhost')
+        const targetUrl = reqUrl.searchParams.get('url')
+        
+        console.log('[B站媒体代理] 目标URL:', targetUrl?.substring(0, 100))
+        
+        if (!targetUrl) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: '缺少 url 参数' }))
+          return
+        }
+        
+        let target
+        try {
+          target = new URL(targetUrl)
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: '无效的目标 URL' }))
+          return
+        }
+        
+        const client = target.protocol === 'https:' ? https : http
+        const options = {
+          hostname: target.hostname,
+          port: target.port || (target.protocol === 'https:' ? 443 : 80),
+          path: target.pathname + target.search,
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://www.bilibili.com/',
+            'Origin': 'https://www.bilibili.com'
+          }
+        }
+        
+        const proxyReq = client.request(options, (proxyRes) => {
+          console.log('[B站媒体代理] 响应状态:', proxyRes.statusCode)
+          
+          // 处理重定向
+          if (proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
+            // 简单重定向处理
+            const redirectUrl = proxyRes.headers.location
+            console.log('[B站媒体代理] 重定向到:', redirectUrl)
+            res.writeHead(302, { 'Location': `/api/bili-proxy?url=${encodeURIComponent(redirectUrl)}` })
+            res.end()
+            return
+          }
+          
+          const headers = { ...proxyRes.headers }
+          delete headers['content-security-policy']
+          res.setHeader('Access-Control-Allow-Origin', '*')
+          res.setHeader('Content-Disposition', 'attachment')
+          res.writeHead(proxyRes.statusCode, headers)
+          proxyRes.pipe(res)
+        })
+        
+        proxyReq.on('error', (err) => {
+          console.error('[B站媒体代理] 请求失败:', err.message)
+          if (!res.headersSent) {
+            res.writeHead(502, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: '代理请求失败: ' + err.message }))
+          }
+        })
+        
+        proxyReq.end()
+      })
+      
+      // 通用代理
       server.middlewares.use('/api/proxy', async (req, res) => {
         const reqUrl = new URL(req.url, 'http://localhost')
         const targetUrl = reqUrl.searchParams.get('url')
