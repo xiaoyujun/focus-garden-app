@@ -1,7 +1,8 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useAppStore } from '../stores/gameStore'
-import { Download, Upload, Trash2, Database, Timer, ListTodo, AlertCircle } from 'lucide-vue-next'
+import { Download, Upload, Trash2, Database, Timer, ListTodo, AlertCircle, RefreshCw, ExternalLink, Smartphone } from 'lucide-vue-next'
+import { APP_VERSION, checkForUpdate, hasNewVersion, formatReleaseDate } from '../services/updateService'
 
 const store = useAppStore()
 
@@ -10,6 +11,12 @@ const showImportModal = ref(false)
 const importText = ref('')
 const importError = ref('')
 const showConfirmClear = ref(false)
+
+// 更新检测状态
+const checking = ref(false)
+const updateInfo = ref(null)
+const updateError = ref('')
+const showUpdateModal = ref(false)
 
 // 统计
 const stats = computed(() => ({
@@ -76,6 +83,35 @@ function handleClear() {
   store.clearAllData()
   showConfirmClear.value = false
   alert('数据已清除')
+}
+
+// 检测更新
+async function handleCheckUpdate() {
+  checking.value = true
+  updateError.value = ''
+  updateInfo.value = null
+  
+  try {
+    const info = await checkForUpdate()
+    if (info) {
+      updateInfo.value = {
+        ...info,
+        hasUpdate: hasNewVersion(APP_VERSION, info.version)
+      }
+      showUpdateModal.value = true
+    } else {
+      updateError.value = '暂无发布版本'
+    }
+  } catch (error) {
+    updateError.value = error.message || '检测更新失败，请稍后重试'
+  } finally {
+    checking.value = false
+  }
+}
+
+// 打开下载链接
+function openDownload(url) {
+  window.open(url, '_blank')
 }
 </script>
 
@@ -169,10 +205,35 @@ function handleClear() {
         </button>
       </div>
 
+      <!-- 应用更新 -->
+      <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <h2 class="text-sm font-medium text-slate-500 p-4 pb-2">应用更新</h2>
+        
+        <button 
+          @click="handleCheckUpdate"
+          :disabled="checking"
+          class="w-full p-4 flex items-center hover:bg-slate-50 transition-colors disabled:opacity-50"
+        >
+          <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center mr-4">
+            <RefreshCw :size="20" class="text-indigo-600" :class="{ 'animate-spin': checking }" />
+          </div>
+          <div class="flex-1 text-left">
+            <p class="font-medium text-slate-800">{{ checking ? '检测中...' : '检测更新' }}</p>
+            <p class="text-sm text-slate-500">当前版本: v{{ APP_VERSION }}</p>
+          </div>
+        </button>
+        
+        <!-- 更新错误提示 -->
+        <div v-if="updateError" class="mx-4 mb-4 p-3 bg-red-50 rounded-xl flex items-center text-sm text-red-600">
+          <AlertCircle :size="16" class="mr-2 flex-shrink-0" />
+          {{ updateError }}
+        </div>
+      </div>
+
       <!-- 关于 -->
       <div class="bg-white rounded-2xl p-4 shadow-sm">
         <h2 class="text-sm font-medium text-slate-500 mb-2">关于</h2>
-        <p class="text-slate-600 text-sm">专注花园 v1.0</p>
+        <p class="text-slate-600 text-sm">专注花园 v{{ APP_VERSION }}</p>
         <p class="text-slate-400 text-xs mt-1">一个简单的番茄钟 + 待办管理应用</p>
       </div>
     </main>
@@ -222,6 +283,72 @@ function handleClear() {
             class="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50"
           >
             导入
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 更新信息弹窗 -->
+    <div v-if="showUpdateModal && updateInfo" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+      <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl">
+        <div class="text-center mb-4">
+          <div 
+            class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+            :class="updateInfo.hasUpdate ? 'bg-emerald-100' : 'bg-slate-100'"
+          >
+            <Smartphone :size="32" :class="updateInfo.hasUpdate ? 'text-emerald-500' : 'text-slate-400'" />
+          </div>
+          <h2 class="text-lg font-bold text-slate-800">
+            {{ updateInfo.hasUpdate ? '发现新版本！' : '已是最新版本' }}
+          </h2>
+        </div>
+        
+        <div class="bg-slate-50 rounded-xl p-4 mb-4 space-y-2">
+          <div class="flex justify-between text-sm">
+            <span class="text-slate-500">当前版本</span>
+            <span class="font-medium text-slate-700">v{{ APP_VERSION }}</span>
+          </div>
+          <div class="flex justify-between text-sm">
+            <span class="text-slate-500">最新版本</span>
+            <span class="font-medium" :class="updateInfo.hasUpdate ? 'text-emerald-600' : 'text-slate-700'">v{{ updateInfo.version }}</span>
+          </div>
+          <div class="flex justify-between text-sm">
+            <span class="text-slate-500">发布日期</span>
+            <span class="text-slate-700">{{ formatReleaseDate(updateInfo.publishedAt) }}</span>
+          </div>
+        </div>
+        
+        <!-- 更新说明 -->
+        <div v-if="updateInfo.description" class="mb-4">
+          <p class="text-xs text-slate-500 mb-1">更新说明:</p>
+          <p class="text-sm text-slate-600 bg-slate-50 rounded-lg p-3 max-h-32 overflow-y-auto whitespace-pre-wrap">{{ updateInfo.description }}</p>
+        </div>
+
+        <div class="space-y-2">
+          <!-- APK 下载按钮 -->
+          <button 
+            v-if="updateInfo.downloadUrl && updateInfo.hasUpdate"
+            @click="openDownload(updateInfo.downloadUrl)"
+            class="w-full py-3 bg-emerald-500 text-white rounded-xl font-medium hover:bg-emerald-600 transition-colors flex items-center justify-center"
+          >
+            <Download :size="18" class="mr-2" />
+            下载 APK 安装包
+          </button>
+          
+          <!-- GitHub 发布页 -->
+          <button 
+            @click="openDownload(updateInfo.releaseUrl)"
+            class="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors flex items-center justify-center"
+          >
+            <ExternalLink :size="18" class="mr-2" />
+            查看 GitHub 发布页
+          </button>
+          
+          <button 
+            @click="showUpdateModal = false"
+            class="w-full py-3 text-slate-500 font-medium hover:text-slate-700 transition-colors"
+          >
+            关闭
           </button>
         </div>
       </div>
