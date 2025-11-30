@@ -506,6 +506,265 @@ export async function searchVideos(keyword, options = {}) {
   }
 }
 
+/**
+ * 获取用户收藏夹列表（需要登录）
+ * @param {number} mid - 用户ID，不传则获取当前登录用户
+ * @returns {Promise<object>}
+ */
+export async function getFavoriteList(mid = null) {
+  if (!isLoggedIn()) {
+    throw new Error('请先登录B站账号')
+  }
+  
+  try {
+    // 如果没传mid，先获取当前用户ID
+    if (!mid) {
+      const cookies = getAuthCookies()
+      const match = cookies.match(/DedeUserID=(\d+)/)
+      if (match) {
+        mid = parseInt(match[1])
+      } else {
+        throw new Error('无法获取用户ID')
+      }
+    }
+    
+    const params = new URLSearchParams({
+      up_mid: mid,
+      type: 0,  // 0-全部 1-视频 2-番剧 21-合集
+      rid: 0,
+      ps: 20,
+      pn: 1
+    })
+    
+    const data = await fetchApi(`/x/v3/fav/folder/created/list-all?${params}`)
+    
+    if (data.code !== 0) {
+      throw new Error(data.message || '获取收藏夹列表失败')
+    }
+    
+    return {
+      count: data.data?.count || 0,
+      list: (data.data?.list || []).map(f => ({
+        id: f.id,
+        fid: f.fid,
+        mid: f.mid,
+        title: f.title,
+        cover: f.cover,
+        mediaCount: f.media_count,
+        ctime: f.ctime,
+        mtime: f.mtime
+      }))
+    }
+  } catch (error) {
+    console.error('获取收藏夹列表失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 获取收藏夹内容
+ * @param {number} mediaId - 收藏夹ID
+ * @param {number} page - 页码
+ * @param {number} pageSize - 每页数量
+ * @returns {Promise<object>}
+ */
+export async function getFavoriteContent(mediaId, page = 1, pageSize = 20) {
+  if (!isLoggedIn()) {
+    throw new Error('请先登录B站账号')
+  }
+  
+  try {
+    const params = new URLSearchParams({
+      media_id: mediaId,
+      ps: pageSize,
+      pn: page,
+      keyword: '',
+      order: 'mtime', // mtime-最近收藏 view-最多播放 pubtime-最新投稿
+      type: 0,
+      tid: 0,
+      platform: 'web'
+    })
+    
+    const data = await fetchApi(`/x/v3/fav/resource/list?${params}`)
+    
+    if (data.code !== 0) {
+      throw new Error(data.message || '获取收藏夹内容失败')
+    }
+    
+    const info = data.data?.info || {}
+    const medias = data.data?.medias || []
+    
+    return {
+      info: {
+        id: info.id,
+        title: info.title,
+        cover: info.cover,
+        mediaCount: info.media_count
+      },
+      hasMore: data.data?.has_more || false,
+      total: data.data?.info?.media_count || 0,
+      list: medias.map(m => ({
+        id: m.id,
+        bvid: m.bvid,
+        aid: m.id,
+        title: m.title,
+        cover: m.cover,
+        duration: m.duration,
+        author: m.upper?.name || '',
+        mid: m.upper?.mid || 0,
+        pubdate: m.pubtime,
+        favTime: m.fav_time,
+        play: m.cnt_info?.play || 0,
+        // 标记失效视频
+        isValid: m.attr !== 9  // attr=9 表示已失效
+      }))
+    }
+  } catch (error) {
+    console.error('获取收藏夹内容失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 获取播放历史记录（需要登录）
+ * @param {number} max - 历史记录最大值（用于分页）
+ * @param {number} viewAt - 上一页最后一条的观看时间（用于分页）
+ * @param {number} pageSize - 每页数量
+ * @returns {Promise<object>}
+ */
+export async function getHistory(max = 0, viewAt = 0, pageSize = 20) {
+  if (!isLoggedIn()) {
+    throw new Error('请先登录B站账号')
+  }
+  
+  try {
+    const params = new URLSearchParams({
+      max: max,
+      view_at: viewAt,
+      ps: pageSize,
+      business: 'archive'  // archive-视频 live-直播 article-专栏
+    })
+    
+    const data = await fetchApi(`/x/web-interface/history/cursor?${params}`)
+    
+    if (data.code !== 0) {
+      throw new Error(data.message || '获取历史记录失败')
+    }
+    
+    const cursor = data.data?.cursor || {}
+    const list = data.data?.list || []
+    
+    return {
+      cursor: {
+        max: cursor.max || 0,
+        viewAt: cursor.view_at || 0,
+        business: cursor.business || 'archive'
+      },
+      hasMore: list.length >= pageSize,
+      list: list.map(h => ({
+        id: h.history?.oid || 0,
+        bvid: h.history?.bvid || '',
+        cid: h.history?.cid || 0,
+        title: h.title || '',
+        cover: h.cover || '',
+        duration: h.duration || 0,
+        progress: h.progress || 0,  // 观看进度（秒）
+        author: h.author_name || '',
+        mid: h.author_mid || 0,
+        viewAt: h.view_at || 0,
+        // 格式化观看时间
+        viewAtText: formatViewAt(h.view_at),
+        // 标记直播等特殊类型
+        business: h.history?.business || 'archive'
+      })).filter(h => h.business === 'archive')  // 只保留视频
+    }
+  } catch (error) {
+    console.error('获取历史记录失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 格式化观看时间
+ */
+function formatViewAt(timestamp) {
+  if (!timestamp) return ''
+  const date = new Date(timestamp * 1000)
+  const now = new Date()
+  const diff = now - date
+  
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+  if (diff < 172800000) return '昨天'
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
+  
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+/**
+ * 获取UP主信息
+ * @param {number} mid - UP主ID
+ * @returns {Promise<object>}
+ */
+export async function getUploaderInfo(mid) {
+  try {
+    const data = await fetchApi(`/x/space/wbi/acc/info?mid=${mid}`)
+    
+    if (data.code !== 0) {
+      throw new Error(data.message || '获取UP主信息失败')
+    }
+    
+    const info = data.data
+    return {
+      mid: info.mid,
+      name: info.name,
+      face: info.face,
+      sign: info.sign,
+      level: info.level,
+      // 认证信息
+      official: {
+        type: info.official?.type ?? -1,
+        title: info.official?.title || '',
+        desc: info.official?.desc || ''
+      },
+      // VIP信息
+      vip: {
+        type: info.vip?.type || 0,
+        status: info.vip?.status || 0,
+        label: info.vip?.label?.text || ''
+      }
+    }
+  } catch (error) {
+    console.error('获取UP主信息失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 获取UP主投稿统计
+ * @param {number} mid - UP主ID
+ * @returns {Promise<object>}
+ */
+export async function getUploaderStat(mid) {
+  try {
+    const data = await fetchApi(`/x/relation/stat?vmid=${mid}`)
+    
+    if (data.code !== 0) {
+      throw new Error(data.message || '获取UP主统计失败')
+    }
+    
+    return {
+      mid: data.data?.mid || mid,
+      following: data.data?.following || 0,
+      follower: data.data?.follower || 0
+    }
+  } catch (error) {
+    console.error('获取UP主统计失败:', error)
+    throw error
+  }
+}
+
 export default {
   extractBilibiliId,
   getVideoInfo,
@@ -515,6 +774,11 @@ export default {
   getUploaderVideos,
   getVideoSeries,
   searchVideos,
+  getFavoriteList,
+  getFavoriteContent,
+  getHistory,
+  getUploaderInfo,
+  getUploaderStat,
   QUALITY_MAP,
   AUDIO_QUALITY_MAP
 }

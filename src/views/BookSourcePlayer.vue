@@ -10,7 +10,8 @@ import {
   Search, Play, Pause, SkipBack, SkipForward, 
   Volume2, VolumeX, Heart, Clock,
   List, X, RotateCcw, RotateCw, Settings, Plus,
-  RefreshCw, Trash2, Globe, BookOpen
+  RefreshCw, Trash2, Globe, BookOpen,
+  ChevronRight, ChevronLeft, User, AlertCircle
 } from 'lucide-vue-next'
 
 defineOptions({ name: 'BookSourcePlayer' })
@@ -243,6 +244,9 @@ async function handleSearch() {
 
 // 查看书籍详情
 async function viewBookDetail(book) {
+  console.log('[调试] 查看书籍详情:', book)
+  console.log('[调试] bookUrl:', book.bookUrl)
+  
   selectedBook.value = book
   showBookDetail.value = true
   bookChapters.value = []
@@ -251,6 +255,7 @@ async function viewBookDetail(book) {
   
   try {
     const source = bookSourceStore.sources.find(s => s.id === book.sourceId)
+    console.log('[调试] 找到的书源:', source)
     
     if (!source) {
       throw new Error('找不到对应的书源配置')

@@ -282,10 +282,12 @@ function resolveUrlTemplate(template, params = {}) {
   })
   
   // 处理书源格式中的 @ 作为查询参数分隔符
-  // 例如: search.php@searchword=xxx 应转换为 search.php?searchword=xxx
-  // 但要避免误伤正常的 @ 字符（如邮箱）
-  // 规则：@ 后面紧跟 参数名=值 的格式，则转换为 ?
-  url = url.replace(/([a-zA-Z0-9_.-]+\.[a-zA-Z0-9]+)@([a-zA-Z_][a-zA-Z0-9_]*=)/g, '$1?$2')
+  // 例如: search.php@searchword=xxx 或 programlisthome@page=1
+  // 应转换为 search.php?searchword=xxx 或 programlisthome?page=1
+  // 规则：@ 后面紧跟 参数名=值 的格式，则转换为 ?（只转换第一个 @）
+  if (url.includes('@') && !url.includes('?')) {
+    url = url.replace(/@([a-zA-Z_][a-zA-Z0-9_]*=)/, '?$1')
+  }
   
   return url
 }
@@ -389,6 +391,19 @@ function convertToValidJson(str) {
 }
 
 /**
+ * 安全解析 JSON 字符串
+ */
+function safeParseJson(str) {
+  if (!str) return {}
+  if (typeof str === 'object') return str
+  try {
+    return JSON.parse(str)
+  } catch {
+    return {}
+  }
+}
+
+/**
  * 使用第三方书源搜索
  * @param {Object} source - 书源配置
  * @param {string} keyword - 搜索关键词
@@ -400,13 +415,17 @@ export async function searchWithSource(source, keyword, page = 1) {
   }
   
   // 尝试多种方式获取搜索URL
-  const raw = source._raw || {}
-  const ruleSearch = raw.ruleSearch || {}
+  const rawConfig = source._raw || {}
+  // 统一解析 ruleSearch，避免重复声明引发的初始化错误
+  const parsedRuleSearch = safeParseJson(rawConfig.ruleSearch)
+  const ruleSearch = typeof rawConfig.ruleSearch === 'object' 
+    ? rawConfig.ruleSearch || {} 
+    : parsedRuleSearch
   
   let searchUrlTemplate = source.searchUrl || 
                           source.ruleSearchUrl ||
-                          raw.searchUrl ||
-                          raw.ruleSearchUrl ||
+                          rawConfig.searchUrl ||
+                          rawConfig.ruleSearchUrl ||
                           ruleSearch.searchUrl ||
                           ''
   
@@ -425,7 +444,7 @@ export async function searchWithSource(source, keyword, page = 1) {
       pageSize: 20
     })
     
-    const baseUrl = source.sourceUrl || source.bookSourceUrl || raw.sourceUrl || raw.bookSourceUrl || ''
+    const baseUrl = source.sourceUrl || source.bookSourceUrl || rawConfig.sourceUrl || rawConfig.bookSourceUrl || ''
     const fullUrl = resolveUrl(baseUrl, searchUrl)
     
     // 判断返回类型 - POST 请求或 JSONPath 规则通常意味着 JSON 响应
@@ -433,7 +452,8 @@ export async function searchWithSource(source, keyword, page = 1) {
                            urlOptions.method === 'POST' ||
                            source.ruleSearchList?.startsWith('$.') ||
                            source.searchList?.startsWith('$.') ||
-                           ruleSearch.bookList?.startsWith('$.')
+                           ruleSearch?.bookList?.startsWith('$.') ||
+                           ruleSearch?.list?.startsWith('$.')
     
     // 处理 POST 请求体中的模板变量
     let requestBody = urlOptions.body || null
@@ -444,28 +464,43 @@ export async function searchWithSource(source, keyword, page = 1) {
         .replace(/\{\{pageSize\}\}/g, '20')
     }
     
-    const html = await fetchUrl(fullUrl, { 
-      responseType: isJsonResponse ? 'json' : 'text',
-      method: urlOptions.method || 'GET',
-      body: requestBody,
-      headers: urlOptions.headers || {},
-      charset: urlOptions.charset  // 传递 charset 配置
-    })
+    let responseData
+    try {
+      responseData = await fetchUrl(fullUrl, { 
+        responseType: isJsonResponse ? 'json' : 'text',
+        method: urlOptions.method || 'GET',
+        body: requestBody,
+        headers: urlOptions.headers || {},
+        charset: urlOptions.charset  // 传递 charset 配置
+      })
+    } catch (fetchError) {
+      console.error('[书源] 搜索请求失败:', fullUrl, fetchError)
+      throw new Error(fetchError.message || '搜索请求失败')
+    }
     
     // 解析搜索结果列表
-    const listRule = source.ruleSearchList || source.searchList || ruleSearch.bookList || ruleSearch.list || ''
+    const listRule = source.ruleSearchList || source.searchList || ruleSearch?.bookList || ruleSearch?.list || ''
     let items = []
     
     if (isJsonResponse) {
-      items = extractFromJson(html, listRule) || []
+      items = extractFromJson(responseData, listRule) || []
     } else {
       // 对于HTML，需要先获取列表元素
-      items = extractListFromHtml(html, listRule, source, fullUrl)
+      items = extractListFromHtml(responseData, listRule, source, fullUrl)
     }
     
     if (!Array.isArray(items)) {
       items = items ? [items] : []
     }
+    
+    // bookUrl 提取规则 - 优先使用 ruleSearch.bookUrl
+    const bookUrlRule = source.searchNoteUrl || 
+                        source.ruleSearchNoteUrl || 
+                        ruleSearch?.bookUrl || 
+                        ruleSearch?.noteUrl || 
+                        ''
+    
+    console.log('[书源] bookUrl提取规则:', bookUrlRule)
     
     // 解析每个搜索结果
     const results = items.map((item, index) => {
@@ -478,13 +513,18 @@ export async function searchWithSource(source, keyword, page = 1) {
       
       // 提取各字段
       if (typeof item === 'object') {
-        result.title = extractField(item, html, source.ruleSearchName || source.searchName) || item.name || item.title || ''
-        result.cover = extractField(item, html, source.ruleSearchCover || source.searchCover) || item.cover || item.coverUrl || ''
-        result.author = extractField(item, html, source.ruleSearchAuthor || source.searchAuthor) || item.author || ''
-        result.artist = extractField(item, html, source.ruleSearchArtist || source.searchArtist) || item.artist || ''
-        result.description = extractField(item, html, source.ruleSearchIntro || source.searchIntro) || item.intro || item.description || ''
-        result.bookUrl = extractField(item, html, source.ruleSearchNoteUrl || source.searchNoteUrl || source.bookUrl) || item.bookUrl || item.noteUrl || ''
-        result.category = extractField(item, html, source.ruleSearchKind || source.searchKind) || item.kind || item.category || ''
+        result.title = extractField(item, responseData, source.ruleSearchName || source.searchName || ruleSearch.name) || item.name || item.title || ''
+        result.cover = extractField(item, responseData, source.ruleSearchCover || source.searchCover || ruleSearch.coverUrl) || item.cover || item.coverUrl || ''
+        result.author = extractField(item, responseData, source.ruleSearchAuthor || source.searchAuthor || ruleSearch.author) || item.author || ''
+        result.artist = extractField(item, responseData, source.ruleSearchArtist || source.searchArtist || ruleSearch.artist) || item.artist || ''
+        result.description = extractField(item, responseData, source.ruleSearchIntro || source.searchIntro || ruleSearch.intro) || item.intro || item.description || ''
+        result.bookUrl = extractField(item, responseData, bookUrlRule) || item.bookUrl || item.noteUrl || ''
+        result.category = extractField(item, responseData, source.ruleSearchKind || source.searchKind || ruleSearch.kind) || item.kind || item.category || ''
+        
+        // 调试输出
+        if (index === 0) {
+          console.log('[书源] 第一个搜索结果:', { title: result.title, bookUrl: result.bookUrl, item })
+        }
       } else if (typeof item === 'string') {
         // item 是一个URL或简单字符串
         result.title = item
@@ -592,8 +632,23 @@ export async function getBookChapters(source, book) {
     // 获取书籍详情页
     const html = await fetchUrl(bookUrl, { responseType: 'text' })
     
-    // 解析章节列表
-    const chapterListRule = source.ruleChapterList || source.chapterList
+    // 解析 Legado 格式的 ruleToc（可能是 JSON 字符串）
+    const raw = source._raw || {}
+    const ruleToc = safeParseJson(raw.ruleToc)
+    
+    // 尝试多种方式获取章节列表规则
+    const chapterListRule = source.ruleChapterList || 
+                            source.chapterList || 
+                            ruleToc.chapterList || 
+                            raw.ruleChapterList ||
+                            ''
+    
+    console.log('[书源] 章节列表规则:', chapterListRule, '书籍URL:', bookUrl)
+    
+    if (!chapterListRule) {
+      throw new Error('书源配置缺少章节列表规则（chapterList/ruleToc）')
+    }
+    
     const parser = new DOMParser()
     const doc = parser.parseFromString(html, 'text/html')
     
@@ -602,9 +657,12 @@ export async function getBookChapters(source, book) {
     
     if (parsed.type === 'css') {
       const elements = doc.querySelectorAll(parsed.value)
+      console.log('[书源] 找到章节元素数量:', elements.length)
+      
       chapters = Array.from(elements).map((el, index) => {
-        const nameRule = source.ruleChapterName || source.chapterName || '@text'
-        const urlRule = source.ruleChapterUrl || source.chapterUrl || '@attr:href'
+        // 尝试多种方式获取章节名和URL规则
+        const nameRule = source.ruleChapterName || source.chapterName || ruleToc.chapterName || '@text'
+        const urlRule = source.ruleChapterUrl || source.chapterUrl || ruleToc.chapterUrl || '@attr:href'
         
         let name = ''
         let url = ''
@@ -641,9 +699,12 @@ export async function getBookChapters(source, book) {
       })
     }
     
+    const filteredChapters = chapters.filter(c => c.title && c.chapterUrl)
+    console.log('[书源] 过滤后章节数量:', filteredChapters.length, '/', chapters.length)
+    
     return {
-      total: chapters.length,
-      chapters: chapters.filter(c => c.title && c.chapterUrl)
+      total: filteredChapters.length,
+      chapters: filteredChapters
     }
   } catch (error) {
     console.error('获取章节列表失败:', error)

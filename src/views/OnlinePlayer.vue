@@ -6,7 +6,10 @@ import {
   searchVideos, 
   getVideoInfo, 
   getVideoSeries, 
-  extractBilibiliId 
+  extractBilibiliId,
+  getFavoriteList,
+  getFavoriteContent,
+  getHistory
 } from '../services/bilibiliService'
 import { 
   getAuthInfo, 
@@ -14,11 +17,12 @@ import {
   loadAuthFromStorage 
 } from '../services/bilibiliAuth'
 import BilibiliLogin from '../components/BilibiliLogin.vue'
+import UploaderSpace from '../components/UploaderSpace.vue'
 import { 
   Search, Play, Pause, SkipBack, SkipForward, 
   Volume2, VolumeX, Heart, Clock,
   List, X, RotateCcw, RotateCw, Trash2, User,
-  SlidersHorizontal
+  SlidersHorizontal, Folder, History, ChevronRight, Loader2
 } from 'lucide-vue-next'
 
 defineOptions({ name: 'OnlinePlayer' })
@@ -35,7 +39,7 @@ const searchError = ref('')
 // UI 状态
 const showPlaylist = ref(false)
 const showLoginModal = ref(false)
-const activeTab = ref('search')      // search | history | favorites
+const activeTab = ref('search')      // search | history | favorites | biliFav | biliHistory
 
 // 搜索筛选状态
 const showSearchFilter = ref(false)
@@ -75,6 +79,24 @@ const userInfo = ref(null)
 // 进度条拖动
 const isDragging = ref(false)
 const dragProgress = ref(0)
+
+// UP主空间
+const showUploaderSpace = ref(false)
+const selectedUploader = ref({ mid: 0, name: '' })
+
+// B站收藏夹
+const biliFavList = ref([])          // 收藏夹列表
+const biliFavContent = ref([])       // 当前收藏夹内容
+const selectedFavId = ref(null)      // 选中的收藏夹ID
+const isFavLoading = ref(false)
+const favError = ref('')
+
+// B站历史记录
+const biliHistoryList = ref([])
+const biliHistoryCursor = ref({ max: 0, viewAt: 0 })
+const isHistoryLoading = ref(false)
+const hasMoreHistory = ref(true)
+const historyError = ref('')
 
 // 刷新登录状态
 function refreshLoginStatus() {
@@ -408,6 +430,144 @@ function playFromHistory(item) {
   activeTab.value = 'search'
 }
 
+// ===== B站收藏夹相关 =====
+
+// 加载B站收藏夹列表
+async function loadBiliFavList() {
+  if (!isLoggedIn.value) {
+    favError.value = '请先登录B站账号'
+    return
+  }
+  
+  isFavLoading.value = true
+  favError.value = ''
+  
+  try {
+    const result = await getFavoriteList()
+    biliFavList.value = result.list
+    
+    // 如果有收藏夹且未选择，自动选择第一个
+    if (result.list.length > 0 && !selectedFavId.value) {
+      selectedFavId.value = result.list[0].id
+      await loadBiliFavContent(result.list[0].id)
+    }
+  } catch (error) {
+    favError.value = error.message || '加载收藏夹失败'
+    console.error('加载B站收藏夹失败:', error)
+  } finally {
+    isFavLoading.value = false
+  }
+}
+
+// 加载收藏夹内容
+async function loadBiliFavContent(mediaId) {
+  selectedFavId.value = mediaId
+  isFavLoading.value = true
+  
+  try {
+    const result = await getFavoriteContent(mediaId)
+    biliFavContent.value = result.list
+  } catch (error) {
+    console.error('加载收藏夹内容失败:', error)
+    favError.value = error.message || '加载内容失败'
+  } finally {
+    isFavLoading.value = false
+  }
+}
+
+// 从B站收藏夹播放
+function playFromBiliFav(item) {
+  if (!item.isValid) {
+    searchError.value = '该视频已失效'
+    return
+  }
+  playVideo({
+    bvid: item.bvid,
+    title: item.title,
+    cover: item.cover,
+    author: item.author,
+    mid: item.mid
+  })
+  activeTab.value = 'search'
+}
+
+// ===== B站历史记录相关 =====
+
+// 加载B站历史记录
+async function loadBiliHistory(loadMore = false) {
+  if (!isLoggedIn.value) {
+    historyError.value = '请先登录B站账号'
+    return
+  }
+  
+  if (isHistoryLoading.value) return
+  
+  isHistoryLoading.value = true
+  historyError.value = ''
+  
+  try {
+    const cursor = loadMore ? biliHistoryCursor.value : { max: 0, viewAt: 0 }
+    const result = await getHistory(cursor.max, cursor.viewAt, 20)
+    
+    if (loadMore) {
+      biliHistoryList.value = [...biliHistoryList.value, ...result.list]
+    } else {
+      biliHistoryList.value = result.list
+    }
+    
+    biliHistoryCursor.value = result.cursor
+    hasMoreHistory.value = result.hasMore
+  } catch (error) {
+    historyError.value = error.message || '加载历史记录失败'
+    console.error('加载B站历史失败:', error)
+  } finally {
+    isHistoryLoading.value = false
+  }
+}
+
+// 从B站历史播放
+function playFromBiliHistory(item) {
+  playVideo({
+    bvid: item.bvid,
+    title: item.title,
+    cover: item.cover,
+    author: item.author,
+    mid: item.mid
+  })
+  activeTab.value = 'search'
+}
+
+// ===== UP主空间相关 =====
+
+// 打开UP主空间
+function openUploaderSpace(mid, name) {
+  if (!mid) return
+  selectedUploader.value = { mid, name }
+  showUploaderSpace.value = true
+}
+
+// UP主空间播放视频回调
+function handleUploaderPlayVideo(video) {
+  showUploaderSpace.value = false
+  playVideo(video)
+}
+
+// 切换到B站收藏夹标签时自动加载
+function switchToBiliFav() {
+  activeTab.value = 'biliFav'
+  if (!biliFavList.value.length && isLoggedIn.value) {
+    loadBiliFavList()
+  }
+}
+
+// 切换到B站历史标签时自动加载
+function switchToBiliHistory() {
+  activeTab.value = 'biliHistory'
+  if (!biliHistoryList.value.length && isLoggedIn.value) {
+    loadBiliHistory()
+  }
+}
+
 // 键盘快捷键
 function handleKeyboard(e) {
   if (e.target.tagName === 'INPUT') return
@@ -595,21 +755,50 @@ onUnmounted(() => {
       </div>
 
       <!-- 标签切换 -->
-      <div class="flex p-1 bg-white/50 backdrop-blur-sm rounded-2xl mb-6 border border-white/50">
+      <div class="flex p-1 bg-white/50 backdrop-blur-sm rounded-2xl mb-6 border border-white/50 overflow-x-auto scrollbar-hide">
         <button 
-          v-for="tab in [
-            { id: 'search', icon: Search, label: '搜索' },
-            { id: 'history', icon: Clock, label: '历史' },
-            { id: 'favorites', icon: Heart, label: '收藏' }
-          ]"
-          :key="tab.id"
-          @click="activeTab = tab.id"
-          class="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5"
-          :class="activeTab === tab.id ? 'bg-white text-pink-600 shadow-sm shadow-pink-100' : 'text-gray-400 hover:text-gray-600'"
+          @click="activeTab = 'search'"
+          class="flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap"
+          :class="activeTab === 'search' ? 'bg-white text-pink-600 shadow-sm shadow-pink-100' : 'text-gray-400 hover:text-gray-600'"
         >
-          <component :is="tab.icon" :size="16" />
-          {{ tab.label }}
+          <Search :size="16" />
+          搜索
         </button>
+        <button 
+          @click="activeTab = 'history'"
+          class="flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap"
+          :class="activeTab === 'history' ? 'bg-white text-pink-600 shadow-sm shadow-pink-100' : 'text-gray-400 hover:text-gray-600'"
+        >
+          <Clock :size="16" />
+          历史
+        </button>
+        <button 
+          @click="activeTab = 'favorites'"
+          class="flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap"
+          :class="activeTab === 'favorites' ? 'bg-white text-pink-600 shadow-sm shadow-pink-100' : 'text-gray-400 hover:text-gray-600'"
+        >
+          <Heart :size="16" />
+          收藏
+        </button>
+        <!-- B站专属标签（登录后显示） -->
+        <template v-if="isLoggedIn">
+          <button 
+            @click="switchToBiliFav"
+            class="flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap"
+            :class="activeTab === 'biliFav' ? 'bg-white text-pink-600 shadow-sm shadow-pink-100' : 'text-gray-400 hover:text-gray-600'"
+          >
+            <Folder :size="16" />
+            B站收藏
+          </button>
+          <button 
+            @click="switchToBiliHistory"
+            class="flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap"
+            :class="activeTab === 'biliHistory' ? 'bg-white text-pink-600 shadow-sm shadow-pink-100' : 'text-gray-400 hover:text-gray-600'"
+          >
+            <History :size="16" />
+            B站历史
+          </button>
+        </template>
       </div>
 
       <!-- 错误提示 -->
@@ -695,10 +884,14 @@ onUnmounted(() => {
           <div class="flex-1 min-w-0 py-0.5 flex flex-col justify-between">
             <h3 class="font-bold text-gray-800 line-clamp-2 text-sm leading-snug">{{ item.title }}</h3>
             <div class="flex items-center justify-between mt-1">
-              <p class="text-xs text-gray-500 flex items-center gap-1">
+              <button 
+                @click.stop="openUploaderSpace(item.mid, item.author)"
+                class="text-xs text-gray-500 flex items-center gap-1 hover:text-pink-600 transition-colors group"
+              >
                 <User :size="12" />
-                <span class="truncate max-w-[80px]">{{ item.author }}</span>
-              </p>
+                <span class="truncate max-w-[80px] group-hover:underline">{{ item.author }}</span>
+                <ChevronRight :size="12" class="opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
               <p v-if="item.play" class="text-xs text-gray-400 flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded">
                 <span class="text-[10px]">▶</span> {{ item.play }}
               </p>
@@ -791,6 +984,187 @@ onUnmounted(() => {
             <Trash2 :size="16" />
           </button>
         </div>
+      </div>
+
+      <!-- B站收藏夹 -->
+      <div v-if="activeTab === 'biliFav'" class="space-y-4">
+        <!-- 未登录提示 -->
+        <div v-if="!isLoggedIn" class="text-center py-16">
+          <div class="w-16 h-16 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Folder :size="24" class="text-pink-300" />
+          </div>
+          <p class="text-gray-500 text-sm mb-4">登录后查看B站收藏夹</p>
+          <button 
+            @click="showLoginModal = true"
+            class="px-4 py-2 bg-pink-500 text-white rounded-lg text-sm font-medium hover:bg-pink-600"
+          >
+            登录B站
+          </button>
+        </div>
+
+        <template v-else>
+          <!-- 加载中 -->
+          <div v-if="isFavLoading && !biliFavList.length" class="text-center py-12">
+            <Loader2 :size="24" class="text-pink-500 animate-spin mx-auto mb-3" />
+            <p class="text-gray-400 text-sm">加载收藏夹...</p>
+          </div>
+
+          <!-- 错误提示 -->
+          <div v-else-if="favError" class="text-center py-12">
+            <p class="text-red-500 text-sm mb-3">{{ favError }}</p>
+            <button @click="loadBiliFavList" class="px-3 py-1.5 bg-pink-50 text-pink-600 rounded-lg text-sm">
+              重试
+            </button>
+          </div>
+
+          <template v-else>
+            <!-- 收藏夹选择 -->
+            <div v-if="biliFavList.length" class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              <button 
+                v-for="fav in biliFavList"
+                :key="fav.id"
+                @click="loadBiliFavContent(fav.id)"
+                class="flex-shrink-0 px-3 py-2 rounded-xl text-xs font-medium transition-all border whitespace-nowrap"
+                :class="selectedFavId === fav.id 
+                  ? 'bg-pink-500 text-white border-pink-500' 
+                  : 'bg-white text-gray-600 border-gray-100 hover:border-pink-200'"
+              >
+                {{ fav.title }}
+                <span class="ml-1 opacity-70">({{ fav.mediaCount }})</span>
+              </button>
+            </div>
+
+            <!-- 收藏夹内容 -->
+            <div v-if="biliFavContent.length" class="space-y-3">
+              <div 
+                v-for="item in biliFavContent"
+                :key="item.bvid"
+                @click="playFromBiliFav(item)"
+                class="flex gap-3 p-3 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer border border-gray-50"
+                :class="{ 'opacity-50': !item.isValid }"
+              >
+                <div class="relative flex-shrink-0">
+                  <img 
+                    :src="item.cover"
+                    referrerpolicy="no-referrer"
+                    class="w-24 h-16 object-cover rounded-xl"
+                  />
+                  <span v-if="!item.isValid" class="absolute inset-0 flex items-center justify-center bg-black/50 rounded-xl text-white text-xs">
+                    已失效
+                  </span>
+                </div>
+                <div class="flex-1 min-w-0 py-0.5">
+                  <h3 class="font-medium text-gray-800 line-clamp-2 text-sm">{{ item.title }}</h3>
+                  <button 
+                    @click.stop="openUploaderSpace(item.mid, item.author)"
+                    class="text-xs text-gray-400 mt-1 flex items-center gap-1 hover:text-pink-500"
+                  >
+                    <User :size="10" />
+                    {{ item.author }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 空状态 -->
+            <div v-else-if="!isFavLoading && selectedFavId" class="text-center py-12 text-gray-400">
+              <Folder :size="32" class="mx-auto mb-3 opacity-50" />
+              <p class="text-sm">该收藏夹暂无内容</p>
+            </div>
+          </template>
+        </template>
+      </div>
+
+      <!-- B站历史记录 -->
+      <div v-if="activeTab === 'biliHistory'" class="space-y-3">
+        <!-- 未登录提示 -->
+        <div v-if="!isLoggedIn" class="text-center py-16">
+          <div class="w-16 h-16 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <History :size="24" class="text-pink-300" />
+          </div>
+          <p class="text-gray-500 text-sm mb-4">登录后查看B站播放历史</p>
+          <button 
+            @click="showLoginModal = true"
+            class="px-4 py-2 bg-pink-500 text-white rounded-lg text-sm font-medium hover:bg-pink-600"
+          >
+            登录B站
+          </button>
+        </div>
+
+        <template v-else>
+          <!-- 加载中 -->
+          <div v-if="isHistoryLoading && !biliHistoryList.length" class="text-center py-12">
+            <Loader2 :size="24" class="text-pink-500 animate-spin mx-auto mb-3" />
+            <p class="text-gray-400 text-sm">加载历史记录...</p>
+          </div>
+
+          <!-- 错误提示 -->
+          <div v-else-if="historyError" class="text-center py-12">
+            <p class="text-red-500 text-sm mb-3">{{ historyError }}</p>
+            <button @click="loadBiliHistory()" class="px-3 py-1.5 bg-pink-50 text-pink-600 rounded-lg text-sm">
+              重试
+            </button>
+          </div>
+
+          <template v-else>
+            <!-- 历史记录列表 -->
+            <div 
+              v-for="item in biliHistoryList"
+              :key="item.bvid + item.viewAt"
+              @click="playFromBiliHistory(item)"
+              class="flex gap-3 p-3 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer border border-gray-50"
+            >
+              <div class="relative flex-shrink-0">
+                <img 
+                  :src="item.cover"
+                  referrerpolicy="no-referrer"
+                  class="w-24 h-16 object-cover rounded-xl"
+                />
+                <!-- 播放进度条 -->
+                <div v-if="item.progress > 0 && item.duration > 0" class="absolute bottom-0 left-0 right-0 h-1 bg-black/30 rounded-b-xl overflow-hidden">
+                  <div 
+                    class="h-full bg-pink-500"
+                    :style="{ width: Math.min(100, (item.progress / item.duration) * 100) + '%' }"
+                  ></div>
+                </div>
+              </div>
+              <div class="flex-1 min-w-0 py-0.5">
+                <h3 class="font-medium text-gray-800 line-clamp-2 text-sm">{{ item.title }}</h3>
+                <div class="flex items-center justify-between mt-1">
+                  <button 
+                    @click.stop="openUploaderSpace(item.mid, item.author)"
+                    class="text-xs text-gray-400 flex items-center gap-1 hover:text-pink-500"
+                  >
+                    <User :size="10" />
+                    {{ item.author }}
+                  </button>
+                  <span class="text-[10px] text-gray-300">{{ item.viewAtText }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 加载更多 -->
+            <div v-if="hasMoreHistory && biliHistoryList.length" class="text-center py-4">
+              <button 
+                @click="loadBiliHistory(true)"
+                :disabled="isHistoryLoading"
+                class="px-4 py-2 text-sm text-pink-600 bg-pink-50 rounded-lg hover:bg-pink-100 disabled:opacity-50"
+              >
+                <span v-if="isHistoryLoading" class="flex items-center gap-1">
+                  <Loader2 :size="14" class="animate-spin" />
+                  加载中...
+                </span>
+                <span v-else>加载更多</span>
+              </button>
+            </div>
+
+            <!-- 空状态 -->
+            <div v-if="!biliHistoryList.length && !isHistoryLoading" class="text-center py-16 text-gray-400">
+              <History :size="32" class="mx-auto mb-3 opacity-50" />
+              <p class="text-sm">暂无播放历史</p>
+            </div>
+          </template>
+        </template>
       </div>
     </main>
 
@@ -990,6 +1364,15 @@ onUnmounted(() => {
       v-if="showLoginModal"
       @close="showLoginModal = false"
       @login-success="onLoginSuccess"
+    />
+
+    <!-- UP主空间弹窗 -->
+    <UploaderSpace
+      v-if="showUploaderSpace"
+      :mid="selectedUploader.mid"
+      :initial-name="selectedUploader.name"
+      @close="showUploaderSpace = false"
+      @play-video="handleUploaderPlayVideo"
     />
   </div>
 </template>
