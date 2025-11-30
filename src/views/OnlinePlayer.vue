@@ -5,7 +5,6 @@ import { useOnlineAudioStore } from '../stores/onlineAudioStore'
 import { 
   searchVideos, 
   getVideoInfo, 
-  getVideoSeries, 
   extractBilibiliId,
   getFavoriteList,
   getFavoriteContent,
@@ -60,6 +59,10 @@ const recommendMode = ref('recommend') // recommend | popular
 
 // 下载相关状态
 const isDownloading = ref(null)        // 正在下载的视频bvid
+
+// 多P视频解析结果
+const parsedVideo = ref(null)          // 解析到的多P视频详情
+const showParsedPages = ref(false)     // 是否展开分P列表
 
 // 搜索筛选状态
 const showSearchFilter = ref(false)
@@ -225,25 +228,55 @@ async function handleSearch() {
   isSearching.value = true
   searchError.value = ''
   searchResults.value = []
+  parsedVideo.value = null
+  showParsedPages.value = false
   
   try {
     // 先检查是否是B站链接
     const videoId = extractBilibiliId(searchQuery.value)
     
     if (videoId.bvid) {
-      // 直接解析视频
+      // 直接解析视频，获取完整的分P信息
       const videoInfo = await getVideoInfo(videoId.bvid)
-      searchResults.value = [{
-        bvid: videoInfo.bvid,
-        aid: videoInfo.aid,
-        title: videoInfo.title,
-        cover: videoInfo.cover,
-        duration: formatTime(videoInfo.duration),
-        author: videoInfo.owner.name,
-        mid: videoInfo.owner.mid,
-        play: videoInfo.stat.view,
-        description: videoInfo.desc
-      }]
+      const pages = videoInfo.pages || []
+      const isMultiPage = pages.length > 1
+      
+      // 保存解析结果（多P视频使用专门的展示区域）
+      if (isMultiPage) {
+        parsedVideo.value = {
+          bvid: videoInfo.bvid,
+          aid: videoInfo.aid,
+          title: videoInfo.title,
+          cover: videoInfo.cover,
+          duration: videoInfo.duration,
+          author: videoInfo.owner.name,
+          mid: videoInfo.owner.mid,
+          play: videoInfo.stat.view,
+          description: videoInfo.desc,
+          pages: pages.map(p => ({
+            page: p.page,
+            cid: p.cid,
+            title: p.part || `P${p.page}`,
+            duration: p.duration,
+            bvid: videoInfo.bvid
+          })),
+          pageCount: pages.length
+        }
+        showParsedPages.value = true
+      } else {
+        // 单P视频直接放搜索结果
+        searchResults.value = [{
+          bvid: videoInfo.bvid,
+          aid: videoInfo.aid,
+          title: videoInfo.title,
+          cover: videoInfo.cover,
+          duration: formatTime(videoInfo.duration),
+          author: videoInfo.owner.name,
+          mid: videoInfo.owner.mid,
+          play: videoInfo.stat.view,
+          description: videoInfo.desc
+        }]
+      }
       sourceStore.addSearchHistory(searchQuery.value)
       return
     }
@@ -262,6 +295,44 @@ async function handleSearch() {
     console.error('搜索失败:', error)
   } finally {
     isSearching.value = false
+  }
+}
+
+// 播放多P视频（从指定分P开始）
+async function playParsedVideo(startIndex = 0) {
+  if (!parsedVideo.value) return
+  
+  audioStore.isLoading = true
+  searchError.value = ''
+  
+  try {
+    const video = parsedVideo.value
+    
+    // 构建视频对象（用于 store）
+    const videoObj = {
+      title: video.title,
+      cover: video.cover,
+      bvid: video.bvid,
+      aid: video.aid,
+      owner: { name: video.author, mid: video.mid },
+      stat: { view: video.play }
+    }
+    
+    // 设置播放列表，从指定索引开始
+    audioStore.setPlaylist(videoObj, video.pages, startIndex)
+    
+    // 添加到播放历史
+    sourceStore.addPlayHistory({
+      id: video.bvid,
+      type: 'bilibili',
+      title: video.title,
+      cover: video.cover,
+      author: video.author
+    })
+  } catch (error) {
+    console.error('播放失败:', error)
+    searchError.value = error.message || '播放失败'
+    audioStore.isLoading = false
   }
 }
 
@@ -293,12 +364,20 @@ async function playVideo(video) {
   searchError.value = ''
   
   try {
-    // 获取视频详细信息和分P列表
+    // 获取视频详细信息（一次请求即可获取所有分P信息）
     const videoInfo = await getVideoInfo(video.bvid)
-    const series = await getVideoSeries(video.bvid)
+    
+    // 直接从 videoInfo 构建播放列表，避免重复请求
+    const playlistItems = (videoInfo.pages || []).map(p => ({
+      page: p.page,
+      cid: p.cid,
+      title: p.part || videoInfo.title,
+      duration: p.duration,
+      bvid: videoInfo.bvid
+    }))
     
     // 设置到全局 store，触发 GlobalAudioPlayer 加载
-    audioStore.setPlaylist(videoInfo, series.items, 0)
+    audioStore.setPlaylist(videoInfo, playlistItems, 0)
     
     // 添加到播放历史
     sourceStore.addPlayHistory({
@@ -1321,7 +1400,7 @@ onUnmounted(() => {
       <!-- 搜索结果 -->
       <div v-if="activeTab === 'search'" class="space-y-3">
         <!-- 推荐搜索（空状态时显示） -->
-        <div v-if="!searchResults.length && !searchQuery && !sourceStore.searchHistory.length" class="mb-4">
+        <div v-if="!searchResults.length && !parsedVideo && !searchQuery && !sourceStore.searchHistory.length" class="mb-4">
           <div class="text-center py-8">
             <div class="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <span class="text-4xl">📺</span>
@@ -1344,7 +1423,7 @@ onUnmounted(() => {
         </div>
 
         <!-- 搜索历史 -->
-        <div v-if="!searchResults.length && sourceStore.searchHistory.length" class="mb-4">
+        <div v-if="!searchResults.length && !parsedVideo && sourceStore.searchHistory.length" class="mb-4">
           <div class="flex items-center justify-between mb-3 px-1">
             <span class="text-xs font-medium text-gray-500">搜索历史</span>
             <button 
@@ -1362,6 +1441,85 @@ onUnmounted(() => {
             >
               {{ keyword }}
             </button>
+          </div>
+        </div>
+
+        <!-- 多P视频解析结果（有声书等） -->
+        <div v-if="parsedVideo" class="mb-4">
+          <!-- 视频信息卡片 -->
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-50 overflow-hidden">
+            <!-- 头部：封面和基本信息 -->
+            <div class="flex gap-4 p-4">
+              <div class="relative flex-shrink-0">
+                <img 
+                  :src="parsedVideo.cover" 
+                  :alt="parsedVideo.title"
+                  referrerpolicy="no-referrer"
+                  class="w-32 h-24 object-cover rounded-xl shadow-sm"
+                />
+                <!-- 多P标识 -->
+                <span class="absolute top-1 left-1 px-2 py-0.5 text-[10px] rounded-md text-white bg-pink-500 backdrop-blur-[2px] shadow-sm font-bold">
+                  📚 {{ parsedVideo.pageCount }}集
+                </span>
+              </div>
+              <div class="flex-1 min-w-0 flex flex-col justify-between">
+                <div>
+                  <h3 class="font-bold text-gray-800 line-clamp-2 text-sm leading-snug mb-1">{{ parsedVideo.title }}</h3>
+                  <button 
+                    @click.stop="openUploaderSpace(parsedVideo.mid, parsedVideo.author)"
+                    class="text-xs text-gray-500 flex items-center gap-1 hover:text-pink-600 transition-colors"
+                  >
+                    <User :size="12" />
+                    <span class="truncate max-w-[100px]">{{ parsedVideo.author }}</span>
+                  </button>
+                </div>
+                <div class="flex items-center gap-2 mt-2">
+                  <button 
+                    @click="playParsedVideo(0)"
+                    class="flex items-center gap-1.5 px-4 py-2 bg-pink-500 text-white rounded-xl text-xs font-bold hover:bg-pink-600 shadow-md shadow-pink-200 transition-all"
+                  >
+                    <Play :size="14" fill="currentColor" />
+                    从头播放
+                  </button>
+                  <button 
+                    @click="showParsedPages = !showParsedPages"
+                    class="flex items-center gap-1 px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 transition-colors"
+                  >
+                    <List :size="14" />
+                    {{ showParsedPages ? '收起' : '选集' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 分P列表（可折叠） -->
+            <Transition name="expand">
+              <div v-if="showParsedPages" class="border-t border-gray-100">
+                <div class="p-3 bg-gray-50/50">
+                  <div class="flex items-center justify-between mb-2 px-1">
+                    <span class="text-xs font-medium text-gray-500">选择章节开始播放</span>
+                    <span class="text-[10px] text-gray-400">共 {{ parsedVideo.pageCount }} 集</span>
+                  </div>
+                  <div class="max-h-64 overflow-y-auto space-y-1 scrollbar-thin">
+                    <button 
+                      v-for="(page, index) in parsedVideo.pages" 
+                      :key="page.cid"
+                      @click="playParsedVideo(index)"
+                      class="w-full flex items-center gap-3 p-2.5 bg-white rounded-xl text-left hover:bg-pink-50 hover:border-pink-200 border border-gray-100 transition-all group"
+                    >
+                      <span class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-gray-100 text-gray-500 text-xs font-bold group-hover:bg-pink-500 group-hover:text-white transition-colors">
+                        {{ page.page }}
+                      </span>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm text-gray-700 truncate group-hover:text-pink-600">{{ page.title }}</p>
+                        <p v-if="page.duration" class="text-[10px] text-gray-400 mt-0.5">{{ formatDuration(page.duration) }}</p>
+                      </div>
+                      <Play :size="14" class="text-gray-300 group-hover:text-pink-500 flex-shrink-0" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Transition>
           </div>
         </div>
 
@@ -1441,7 +1599,7 @@ onUnmounted(() => {
           <p class="text-pink-400 text-xs font-medium">正在搜索 Bilibili...</p>
         </div>
 
-        <div v-if="!isSearching && !searchResults.length && searchQuery" class="text-center py-16 text-gray-400">
+        <div v-if="!isSearching && !searchResults.length && !parsedVideo && searchQuery" class="text-center py-16 text-gray-400">
           <div class="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
             <Search :size="24" class="text-gray-300" />
           </div>
@@ -1968,5 +2126,37 @@ input[type="range"]::-moz-range-thumb {
 @keyframes music-bar { 
   from { height: 40%; } 
   to { height: 100%; } 
+}
+
+/* 展开/收起动画 */
+.expand-enter-active,
+.expand-leave-active {
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+.expand-enter-from,
+.expand-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+.expand-enter-to,
+.expand-leave-from {
+  opacity: 1;
+  max-height: 400px;
+}
+
+/* 细滚动条 */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #e5e7eb;
+  border-radius: 2px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #d1d5db;
 }
 </style>

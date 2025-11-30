@@ -16,7 +16,9 @@ const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 const REFERER = 'https://www.bilibili.com/'
 const ORIGIN = 'https://www.bilibili.com'
-const CACHE_TTL = 1000 * 60 * 5 // 5 分钟缓存，避免重复拉取同一资源
+// 缓存时间配置（登录后使用官方API，可以更积极地缓存）
+const CACHE_TTL = 1000 * 60 * 5      // 默认5分钟（播放地址等时效性数据）
+const VIDEO_INFO_TTL = 1000 * 60 * 30 // 视频信息30分钟（基本不变）
 
 // 简单缓存 + 并发合并，减少同一时间的重复请求
 const cacheStore = new Map()
@@ -66,11 +68,11 @@ function getCache(key) {
   return null
 }
 
-function setCache(key, value) {
-  cacheStore.set(key, { value, expires: Date.now() + CACHE_TTL })
+function setCache(key, value, ttl = CACHE_TTL) {
+  cacheStore.set(key, { value, expires: Date.now() + ttl })
 }
 
-async function withCache(key, fetcher, useCache = true) {
+async function withCache(key, fetcher, useCache = true, ttl = CACHE_TTL) {
   if (!useCache) {
     return fetcher()
   }
@@ -87,7 +89,7 @@ async function withCache(key, fetcher, useCache = true) {
   const promise = (async () => {
     try {
       const value = await fetcher()
-      setCache(key, value)
+      setCache(key, value, ttl)
       return value
     } finally {
       inflightMap.delete(key)
@@ -114,6 +116,7 @@ function buildHeaders(cookies) {
  * @param {boolean} options.isSearch - 是否走搜索代理
  * @param {boolean} options.useCache - 是否缓存/合并请求
  * @param {string} options.cacheKey - 自定义缓存 key
+ * @param {number} options.cacheTtl - 自定义缓存时间（毫秒）
  * @param {boolean} options.skipLogin - 跳过登录校验（默认需要登录）
  * @param {AbortSignal} options.signal - 可选的中断信号
  */
@@ -123,6 +126,7 @@ async function fetchApi(path, options = {}) {
     isSearch = false,
     useCache = false,
     cacheKey,
+    cacheTtl = CACHE_TTL,
     skipLogin = false,
     signal
   } = opts
@@ -169,7 +173,7 @@ async function fetchApi(path, options = {}) {
     }
   }
 
-  return withCache(key, request, useCache)
+  return withCache(key, request, useCache, cacheTtl)
 }
 
 /**
@@ -209,9 +213,11 @@ export function extractBilibiliId(url) {
  * @returns {Promise<object>}
  */
 export async function getVideoInfo(bvid) {
+  // 视频基本信息缓存30分钟，减少重复请求
   const data = await fetchApi(`/x/web-interface/view?bvid=${bvid}`, {
     useCache: true,
-    cacheKey: `view:${bvid}`
+    cacheKey: `view:${bvid}`,
+    cacheTtl: VIDEO_INFO_TTL
   })
 
   if (data.code !== 0) {
@@ -939,7 +945,6 @@ export default {
   getBestAudioUrl,
   getAudioUrls,
   getUploaderVideos,
-  getVideoSeries,
   searchVideos,
   getFavoriteList,
   getFavoriteContent,

@@ -175,9 +175,15 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
 
   // 设置视频和播放列表
   function setPlaylist(video, playlist, index = 0) {
+    // 先重置 index 为 -1，确保后续设置 index 时 watch 能被触发
+    // （解决从 0 变到 0 时 watch 不触发的问题）
+    currentIndex.value = -1
     currentVideo.value = video
     currentPlaylist.value = playlist
-    currentIndex.value = index
+    // 使用 nextTick 或 setTimeout 确保状态更新后再设置 index
+    setTimeout(() => {
+      currentIndex.value = index
+    }, 0)
   }
 
   // 播放/暂停

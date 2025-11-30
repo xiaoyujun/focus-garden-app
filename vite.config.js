@@ -60,7 +60,7 @@ function proxyPlugin() {
           const headers = { ...proxyRes.headers }
           delete headers['content-security-policy']
           res.setHeader('Access-Control-Allow-Origin', '*')
-          res.setHeader('Content-Disposition', 'attachment')
+          // 不设置 Content-Disposition: attachment，允许流式播放
           res.writeHead(proxyRes.statusCode, headers)
           proxyRes.pipe(res)
         })

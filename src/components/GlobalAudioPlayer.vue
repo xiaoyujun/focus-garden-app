@@ -8,6 +8,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { useOnlineAudioStore } from '../stores/onlineAudioStore'
 import { getAudioUrls } from '../services/bilibiliService'
 import { Play, Pause, SkipForward, X, ChevronUp } from 'lucide-vue-next'
+import { Capacitor } from '@capacitor/core'
+
+// 平台判断
+const isNative = Capacitor.isNativePlatform()
 
 const route = useRoute()
 const router = useRouter()
@@ -37,7 +41,14 @@ onUnmounted(() => {
 watch(() => store.currentIndex, async (newIndex, oldIndex) => {
   // 等待 audio 元素挂载
   if (!audioRef.value) return
-  if (newIndex < 0 || newIndex >= store.currentPlaylist.length) return
+  
+  // index 为 -1 时表示正在切换视频，取消当前加载
+  if (newIndex < 0) {
+    loadVersion++ // 取消进行中的加载
+    return
+  }
+  
+  if (newIndex >= store.currentPlaylist.length) return
   // oldIndex 为 undefined 时是初始化，不自动播放（恢复上次状态）
   if (oldIndex === undefined) return
   
@@ -113,7 +124,8 @@ function tryPlayUrl(url, track, version) {
     }
     
     const audio = audioRef.value
-    const timeout = setTimeout(() => reject(new Error('超时')), 15000)
+    // 登录用户使用官方 API，响应通常较快，8秒超时足够
+    const timeout = setTimeout(() => reject(new Error('超时')), 8000)
     
     const onCanPlay = async () => {
       clearTimeout(timeout)
@@ -152,7 +164,9 @@ function tryPlayUrl(url, track, version) {
     audio.addEventListener('canplay', onCanPlay, { once: true })
     audio.addEventListener('error', onError, { once: true })
     
-    audio.src = url
+    // Web 端需要通过代理访问 B 站音频（绕过 CORS 和防盗链）
+    const finalUrl = isNative ? url : `/api/bili-proxy?url=${encodeURIComponent(url)}`
+    audio.src = finalUrl
     audio.volume = store.volume
     audio.playbackRate = store.playbackRate
   })
