@@ -438,93 +438,104 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gradient-to-b from-farm-50 to-nature-50/30 pb-32">
+  <div class="min-h-screen bg-gradient-to-br from-pink-50 via-white to-rose-50 pb-36">
     <!-- 头部 -->
-    <header class="p-4 flex items-center justify-between">
-      <h1 class="text-xl font-bold text-farm-900 flex items-center gap-2">
-        <span class="text-2xl">📺</span>
-        B站听书
+    <header class="pt-6 pb-2 px-6 flex items-center justify-between relative z-10">
+      <h1 class="text-2xl font-bold text-pink-900 flex items-center gap-2.5 tracking-tight">
+        <div class="w-10 h-10 rounded-xl bg-pink-500 flex items-center justify-center shadow-lg shadow-pink-200 text-white">
+          <span class="text-xl">📺</span>
+        </div>
+        <span>B站听书</span>
       </h1>
       <!-- B站登录按钮 -->
       <button 
         @click="showLoginModal = true"
-        class="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors"
-        :class="isLoggedIn ? 'bg-pink-100 text-pink-700' : 'bg-farm-100 text-farm-600 hover:bg-farm-200'"
+        class="flex items-center gap-2 px-3 py-2 rounded-xl transition-all shadow-sm border"
+        :class="isLoggedIn ? 'bg-white border-pink-100 text-pink-600 hover:bg-pink-50' : 'bg-white border-gray-100 text-gray-500 hover:bg-gray-50'"
       >
         <img 
           v-if="isLoggedIn && userInfo?.avatar" 
           :src="userInfo.avatar" 
           referrerpolicy="no-referrer"
-          class="w-5 h-5 rounded-full"
+          class="w-6 h-6 rounded-full ring-2 ring-pink-100"
         />
         <User v-else :size="18" />
-        <span class="text-sm">{{ isLoggedIn ? (userInfo?.userName || '已登录') : '登录B站' }}</span>
+        <span class="text-xs font-medium">{{ isLoggedIn ? (userInfo?.userName || '已登录') : '登录B站' }}</span>
       </button>
     </header>
 
-    <main class="px-4 max-w-md mx-auto">
+    <main class="px-4 max-w-md mx-auto relative z-10">
       <!-- B站登录提示条 -->
       <div 
         v-if="!isLoggedIn" 
-        class="mb-3 px-3 py-2 rounded-lg text-sm bg-pink-50 text-pink-700 flex items-center justify-between"
+        class="mb-6 px-4 py-3 rounded-2xl text-xs font-medium bg-white/80 border border-pink-100 text-pink-600 flex items-center justify-between shadow-sm backdrop-blur-sm"
       >
-        <span>登录B站可搜索更多内容、解锁更高音质</span>
+        <span class="flex items-center gap-2">
+          <span class="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse"></span>
+          登录B站可搜索更多内容、解锁更高音质
+        </span>
         <button 
           @click="showLoginModal = true"
-          class="px-3 py-1 rounded-lg text-xs font-medium bg-pink-500 text-white hover:bg-pink-600"
+          class="px-3 py-1.5 rounded-lg text-xs font-bold bg-pink-500 text-white hover:bg-pink-600 hover:shadow-lg hover:shadow-pink-200 transition-all"
         >
           登录
         </button>
       </div>
 
       <!-- 搜索框 -->
-      <div class="relative mb-4">
-        <input 
-          v-model="searchQuery"
-          @keyup.enter="handleSearch"
-          type="text"
-          placeholder="搜索有声书、输入B站链接..."
-          class="w-full px-4 py-3 pl-12 bg-white rounded-xl border border-farm-200 focus:border-nature-400 focus:ring-2 focus:ring-nature-100 outline-none transition-all"
-        />
-        <Search :size="20" class="absolute left-4 top-1/2 -translate-y-1/2 text-farm-400" />
-        <button 
-          v-if="searchQuery"
-          @click="searchQuery = ''; searchResults = []"
-          class="absolute right-12 top-1/2 -translate-y-1/2 text-farm-400 hover:text-farm-600"
-        >
-          <X :size="18" />
-        </button>
-        <button 
-          @click="handleSearch"
-          :disabled="isSearching"
-          class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-nature-500 text-white rounded-lg text-sm font-medium hover:bg-nature-600 disabled:opacity-50"
-        >
-          {{ isSearching ? '...' : '搜索' }}
-        </button>
+      <div class="relative mb-4 group">
+        <div class="absolute inset-0 bg-pink-200/30 rounded-2xl blur-xl transition-opacity opacity-0 group-hover:opacity-100"></div>
+        <div class="relative bg-white rounded-2xl shadow-lg shadow-pink-100/50 overflow-hidden flex items-center transition-transform focus-within:scale-[1.02]">
+          <div class="pl-4 text-pink-300">
+            <Search :size="20" />
+          </div>
+          <input 
+            v-model="searchQuery"
+            @keyup.enter="handleSearch"
+            type="text"
+            placeholder="搜索有声书、输入B站链接..."
+            class="w-full px-3 py-4 bg-transparent outline-none text-pink-900 placeholder:text-pink-300/70"
+          />
+          <button 
+            v-if="searchQuery"
+            @click="searchQuery = ''; searchResults = []"
+            class="p-2 text-pink-300 hover:text-pink-500 transition-colors"
+          >
+            <X :size="18" />
+          </button>
+          <button 
+            @click="handleSearch"
+            :disabled="isSearching"
+            class="m-1.5 px-4 py-2 bg-pink-500 text-white rounded-xl text-sm font-bold hover:bg-pink-600 disabled:opacity-50 transition-colors shadow-md shadow-pink-200"
+          >
+            {{ isSearching ? '...' : '搜索' }}
+          </button>
+        </div>
       </div>
 
       <!-- 筛选按钮和快捷标签 -->
-      <div class="flex items-center gap-2 mb-4">
+      <div class="flex items-center gap-2 mb-6">
         <button 
           @click="showSearchFilter = !showSearchFilter"
-          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+          class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm border"
           :class="showSearchFilter || searchFilter.type !== 'all' || searchFilter.order !== 'default' || searchFilter.duration !== 'all' 
-            ? 'bg-nature-500 text-white' 
-            : 'bg-farm-100 text-farm-600 hover:bg-farm-200'"
+            ? 'bg-pink-500 text-white border-pink-500 shadow-pink-200' 
+            : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'"
         >
-          <SlidersHorizontal :size="16" />
+          <SlidersHorizontal :size="14" />
           筛选
         </button>
         <!-- 快捷类型标签 -->
-        <div class="flex-1 flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+        <div class="flex-1 flex gap-2 overflow-x-auto pb-1 scrollbar-hide px-1">
           <button 
             v-for="opt in filterOptions.type" 
             :key="opt.value"
             @click="searchFilter.type = opt.value; searchQuery.trim() && handleSearch()"
-            class="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap"
-            :class="searchFilter.type === opt.value ? 'bg-nature-100 text-nature-700 border border-nature-300' : 'bg-farm-50 text-farm-600 hover:bg-farm-100'"
+            class="flex-shrink-0 px-3 py-2 rounded-xl text-xs font-medium transition-all whitespace-nowrap border"
+            :class="searchFilter.type === opt.value ? 'bg-pink-50 text-pink-600 border-pink-200 shadow-sm' : 'bg-white text-gray-500 border-transparent hover:bg-gray-50'"
           >
-            {{ opt.icon }} {{ opt.label }}
+            <span class="mr-1">{{ opt.icon }}</span>
+            {{ opt.label }}
           </button>
         </div>
       </div>
@@ -584,37 +595,30 @@ onUnmounted(() => {
       </div>
 
       <!-- 标签切换 -->
-      <div class="flex gap-2 mb-4">
+      <div class="flex p-1 bg-white/50 backdrop-blur-sm rounded-2xl mb-6 border border-white/50">
         <button 
-          @click="activeTab = 'search'"
-          class="flex-1 py-2 rounded-lg text-sm font-medium transition-colors"
-          :class="activeTab === 'search' ? 'bg-nature-500 text-white' : 'bg-farm-100 text-farm-600'"
+          v-for="tab in [
+            { id: 'search', icon: Search, label: '搜索' },
+            { id: 'history', icon: Clock, label: '历史' },
+            { id: 'favorites', icon: Heart, label: '收藏' }
+          ]"
+          :key="tab.id"
+          @click="activeTab = tab.id"
+          class="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5"
+          :class="activeTab === tab.id ? 'bg-white text-pink-600 shadow-sm shadow-pink-100' : 'text-gray-400 hover:text-gray-600'"
         >
-          <Search :size="16" class="inline mr-1" />
-          搜索
-        </button>
-        <button 
-          @click="activeTab = 'history'"
-          class="flex-1 py-2 rounded-lg text-sm font-medium transition-colors"
-          :class="activeTab === 'history' ? 'bg-nature-500 text-white' : 'bg-farm-100 text-farm-600'"
-        >
-          <Clock :size="16" class="inline mr-1" />
-          历史
-        </button>
-        <button 
-          @click="activeTab = 'favorites'"
-          class="flex-1 py-2 rounded-lg text-sm font-medium transition-colors"
-          :class="activeTab === 'favorites' ? 'bg-nature-500 text-white' : 'bg-farm-100 text-farm-600'"
-        >
-          <Heart :size="16" class="inline mr-1" />
-          收藏
+          <component :is="tab.icon" :size="16" />
+          {{ tab.label }}
         </button>
       </div>
 
       <!-- 错误提示 -->
-      <div v-if="searchError" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
-        <p class="text-red-600 text-sm mb-2">{{ searchError }}</p>
-        <p class="text-xs text-red-400">
+      <div v-if="searchError" class="mb-4 p-4 bg-red-50 border border-red-100 rounded-2xl shadow-sm">
+        <p class="text-red-600 text-sm mb-2 font-medium flex items-center gap-2">
+          <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+          {{ searchError }}
+        </p>
+        <p class="text-xs text-red-400 ml-3.5">
           提示：如果搜索失败，可以尝试直接粘贴B站视频链接（如 BV1xxx 或完整URL）
         </p>
       </div>
@@ -623,31 +627,34 @@ onUnmounted(() => {
       <div v-if="activeTab === 'search'" class="space-y-3">
         <!-- 推荐搜索（空状态时显示） -->
         <div v-if="!searchResults.length && !searchQuery && !sourceStore.searchHistory.length" class="mb-4">
-          <div class="text-center py-6">
-            <span class="text-5xl">📺</span>
-            <p class="text-farm-500 mb-4 mt-4">搜索B站有声小说、音乐、播客</p>
-            <p class="text-xs text-farm-400 mb-4">支持直接粘贴B站视频链接</p>
-          </div>
-          <div class="text-sm text-farm-500 mb-2">🔥 热门搜索</div>
-          <div class="flex flex-wrap gap-2">
-            <button 
-              v-for="keyword in ['有声小说', '单田芳人', '罗翔说书', '白噪音', 'ASMR', '睡前故事']" 
-              :key="keyword"
-              @click="searchFromHistory(keyword)"
-              class="px-3 py-1.5 bg-pink-50 text-pink-600 rounded-full text-sm hover:bg-pink-100 transition-colors"
-            >
-              {{ keyword }}
-            </button>
+          <div class="text-center py-8">
+            <div class="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span class="text-4xl">📺</span>
+            </div>
+            <p class="text-gray-500 mb-2 font-medium">搜索B站有声小说、音乐、播客</p>
+            <p class="text-xs text-gray-400 mb-6">支持直接粘贴B站视频链接</p>
+            
+            <div class="text-xs text-gray-400 mb-3 flex items-center justify-center gap-2 before:content-[''] before:h-[1px] before:w-8 before:bg-gray-200 after:content-[''] after:h-[1px] after:w-8 after:bg-gray-200">热门搜索</div>
+            <div class="flex flex-wrap justify-center gap-2">
+              <button 
+                v-for="keyword in ['有声小说', '单田芳', '罗翔说书', '白噪音', 'ASMR', '睡前故事']" 
+                :key="keyword"
+                @click="searchFromHistory(keyword)"
+                class="px-3 py-1.5 bg-white border border-gray-100 text-gray-600 rounded-full text-xs hover:border-pink-200 hover:text-pink-600 hover:bg-pink-50 transition-colors shadow-sm"
+              >
+                {{ keyword }}
+              </button>
+            </div>
           </div>
         </div>
 
         <!-- 搜索历史 -->
         <div v-if="!searchResults.length && sourceStore.searchHistory.length" class="mb-4">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-sm text-farm-500">搜索历史</span>
+          <div class="flex items-center justify-between mb-3 px-1">
+            <span class="text-xs font-medium text-gray-500">搜索历史</span>
             <button 
               @click="sourceStore.clearSearchHistory()" 
-              class="text-xs text-farm-400 hover:text-farm-600">
+              class="text-xs text-gray-400 hover:text-gray-600 p-1">
               清空
             </button>
           </div>
@@ -656,7 +663,7 @@ onUnmounted(() => {
               v-for="keyword in sourceStore.searchHistory.slice(0, 10)" 
               :key="keyword"
               @click="searchFromHistory(keyword)"
-              class="px-3 py-1 bg-farm-100 text-farm-600 rounded-full text-sm hover:bg-farm-200"
+              class="px-3 py-1.5 bg-white text-gray-600 rounded-full text-xs hover:bg-gray-50 border border-gray-100 shadow-sm transition-colors"
             >
               {{ keyword }}
             </button>
@@ -668,89 +675,118 @@ onUnmounted(() => {
           v-for="item in searchResults" 
           :key="item.bvid"
           @click="handlePlayItem(item)"
-          class="flex gap-3 p-3 bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+          class="flex gap-4 p-3 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer border border-gray-50 active:scale-[0.99]"
         >
           <div class="relative flex-shrink-0">
             <img 
               :src="item.cover" 
               :alt="item.title"
               referrerpolicy="no-referrer"
-              class="w-24 h-16 object-cover rounded-lg"
+              class="w-28 h-20 object-cover rounded-xl shadow-sm"
             />
             <!-- B站标识 -->
-            <span class="absolute bottom-1 left-1 px-1.5 py-0.5 text-xs rounded text-white bg-pink-500">
-              B站
+            <span class="absolute bottom-1 left-1 px-1.5 py-0.5 text-[10px] rounded-md text-white bg-pink-500/90 backdrop-blur-[2px] shadow-sm font-bold">
+              Bilibili
+            </span>
+            <span v-if="item.duration" class="absolute bottom-1 right-1 px-1.5 py-0.5 text-[10px] rounded-md text-white bg-black/60 backdrop-blur-[2px]">
+              {{ item.duration }}
             </span>
           </div>
-          <div class="flex-1 min-w-0">
-            <h3 class="font-medium text-farm-800 line-clamp-2 text-sm">{{ item.title }}</h3>
-            <p class="text-xs text-farm-400 mt-1">
-              {{ item.author }}
-              <span v-if="item.duration"> · {{ item.duration }}</span>
-            </p>
+          <div class="flex-1 min-w-0 py-0.5 flex flex-col justify-between">
+            <h3 class="font-bold text-gray-800 line-clamp-2 text-sm leading-snug">{{ item.title }}</h3>
+            <div class="flex items-center justify-between mt-1">
+              <p class="text-xs text-gray-500 flex items-center gap-1">
+                <User :size="12" />
+                <span class="truncate max-w-[80px]">{{ item.author }}</span>
+              </p>
+              <p v-if="item.play" class="text-xs text-gray-400 flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded">
+                <span class="text-[10px]">▶</span> {{ item.play }}
+              </p>
+            </div>
           </div>
         </div>
 
-        <div v-if="isSearching" class="text-center py-8 text-farm-400">
-          <div class="w-8 h-8 border-3 border-farm-200 border-t-nature-500 rounded-full animate-spin mx-auto mb-2"></div>
-          搜索中...
+        <div v-if="isSearching" class="text-center py-12">
+          <div class="w-8 h-8 border-4 border-pink-100 border-t-pink-500 rounded-full animate-spin mx-auto mb-3"></div>
+          <p class="text-pink-400 text-xs font-medium">正在搜索 Bilibili...</p>
         </div>
 
-        <div v-if="!isSearching && !searchResults.length && searchQuery" class="text-center py-8 text-farm-400">
-          未找到相关内容
+        <div v-if="!isSearching && !searchResults.length && searchQuery" class="text-center py-16 text-gray-400">
+          <div class="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Search :size="24" class="text-gray-300" />
+          </div>
+          <p class="text-sm">未找到相关内容</p>
         </div>
       </div>
 
       <!-- 播放历史 -->
       <div v-if="activeTab === 'history'" class="space-y-3">
-        <div v-if="!sourceStore.playHistory.length" class="text-center py-8 text-farm-400">
-          暂无播放历史
+        <div v-if="!sourceStore.playHistory.length" class="text-center py-16 text-gray-400">
+          <div class="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Clock :size="24" class="text-gray-300" />
+          </div>
+          <p class="text-sm">暂无播放历史</p>
         </div>
         <div 
           v-for="item in sourceStore.playHistory" 
           :key="item.id"
           @click="playFromHistory(item)"
-          class="flex gap-3 p-3 bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+          class="flex gap-4 p-3 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer border border-gray-50 active:scale-[0.99]"
         >
-          <img 
-            v-if="item.cover"
-            :src="item.cover" 
-            :alt="item.title"
-            referrerpolicy="no-referrer"
-            class="w-16 h-12 object-cover rounded-lg flex-shrink-0"
-          />
-          <div class="flex-1 min-w-0">
-            <h3 class="font-medium text-farm-800 line-clamp-1 text-sm">{{ item.title }}</h3>
-            <p class="text-xs text-farm-400 mt-1">{{ item.author }}</p>
+          <div class="relative flex-shrink-0">
+            <img 
+              v-if="item.cover"
+              :src="item.cover" 
+              :alt="item.title"
+              referrerpolicy="no-referrer"
+              class="w-20 h-14 object-cover rounded-xl shadow-sm"
+            />
+          </div>
+          <div class="flex-1 min-w-0 py-0.5">
+            <h3 class="font-bold text-gray-800 line-clamp-1 text-sm">{{ item.title }}</h3>
+            <p class="text-xs text-gray-500 mt-1 flex items-center gap-1">
+              <User :size="12" />
+              {{ item.author }}
+            </p>
+            <p class="text-[10px] text-gray-400 mt-1.5">
+              上次播放: {{ new Date().toLocaleDateString() }}
+            </p>
           </div>
         </div>
       </div>
 
       <!-- 收藏 -->
       <div v-if="activeTab === 'favorites'" class="space-y-3">
-        <div v-if="!sourceStore.favorites.length" class="text-center py-8 text-farm-400">
-          暂无收藏
+        <div v-if="!sourceStore.favorites.length" class="text-center py-16 text-gray-400">
+          <div class="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Heart :size="24" class="text-gray-300" />
+          </div>
+          <p class="text-sm">暂无收藏内容</p>
         </div>
         <div 
           v-for="item in sourceStore.favorites" 
           :key="item.id"
-          class="flex gap-3 p-3 bg-white rounded-xl shadow-sm"
+          class="flex gap-4 p-3 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all border border-gray-50"
         >
-          <img 
-            v-if="item.cover"
-            :src="item.cover" 
-            :alt="item.title"
-            referrerpolicy="no-referrer"
-            @click="playFromFavorite(item)"
-            class="w-16 h-12 object-cover rounded-lg flex-shrink-0 cursor-pointer"
-          />
-          <div class="flex-1 min-w-0" @click="playFromFavorite(item)">
-            <h3 class="font-medium text-farm-800 line-clamp-1 text-sm cursor-pointer">{{ item.title }}</h3>
-            <p class="text-xs text-farm-400 mt-1">{{ item.author }}</p>
+          <div class="relative flex-shrink-0" @click="playFromFavorite(item)">
+            <img 
+              v-if="item.cover"
+              :src="item.cover" 
+              :alt="item.title"
+              referrerpolicy="no-referrer"
+              class="w-20 h-14 object-cover rounded-xl shadow-sm cursor-pointer"
+            />
+          </div>
+          <div class="flex-1 min-w-0 py-0.5 cursor-pointer" @click="playFromFavorite(item)">
+            <h3 class="font-bold text-gray-800 line-clamp-1 text-sm">{{ item.title }}</h3>
+            <p class="text-xs text-gray-500 mt-1 flex items-center gap-1">
+              <User :size="12" />
+              {{ item.author }}
+            </p>
           </div>
           <button 
             @click="sourceStore.removeFavorite(item.id)"
-            class="text-farm-400 hover:text-red-500"
+            class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors self-center"
           >
             <Trash2 :size="16" />
           </button>
@@ -761,179 +797,194 @@ onUnmounted(() => {
     <!-- 底部播放器（有内容时显示） -->
     <div 
       v-if="currentTrack"
-      class="fixed bottom-0 left-0 right-0 bg-white border-t border-farm-100 shadow-lg z-40"
+      class="fixed bottom-24 left-4 right-4 z-40"
     >
-      <!-- 进度条 - 加高方便触控 -->
-      <div 
-        class="h-2 bg-farm-100 cursor-pointer relative group"
-        @mousedown="onProgressMouseDown"
-        @mousemove="onProgressMouseMove"
-        @mouseup="onProgressMouseUp"
-        @mouseleave="onProgressMouseUp"
-        @touchstart="onProgressTouchStart"
-        @touchmove="onProgressTouchMove"
-        @touchend="onProgressTouchEnd"
-      >
+      <div class="bg-white/90 backdrop-blur-xl rounded-[2rem] p-4 shadow-2xl shadow-pink-900/10 border border-white/50">
+        <!-- 进度条 -->
         <div 
-          class="h-full bg-nature-500 transition-all relative"
-          :style="{ width: displayProgress + '%' }"
+          class="absolute -top-1 left-6 right-6 h-2 cursor-pointer group"
+          @mousedown="onProgressMouseDown"
+          @mousemove="onProgressMouseMove"
+          @mouseup="onProgressMouseUp"
+          @mouseleave="onProgressMouseUp"
+          @touchstart="onProgressTouchStart"
+          @touchmove="onProgressTouchMove"
+          @touchend="onProgressTouchEnd"
         >
-          <!-- 进度条拖动手柄 -->
-          <div class="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-nature-500 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <div class="h-full bg-pink-100 rounded-full overflow-hidden">
+            <div 
+              class="h-full bg-gradient-to-r from-pink-400 to-pink-600 transition-all group-hover:from-pink-500 group-hover:to-pink-700"
+              :style="{ width: displayProgress + '%' }"
+            ></div>
+          </div>
         </div>
-      </div>
 
-      <div class="px-4 pt-3 pb-4">
-        <!-- 当前播放信息 + 辅助按钮 -->
-        <div class="flex items-center gap-3 mb-4">
-          <img 
-            v-if="currentVideo?.cover"
-            :src="currentVideo.cover"
-            referrerpolicy="no-referrer"
-            class="w-14 h-14 rounded-xl object-cover shadow-sm"
-          />
-          <div class="flex-1 min-w-0">
-            <p class="font-medium text-farm-800 truncate">{{ currentTrack?.title }}</p>
-            <p class="text-sm text-farm-400 mt-0.5">
-              {{ formattedCurrentTime }} / {{ formattedDuration }}
-              <span v-if="currentPlaylist.length > 1" class="ml-2 text-nature-600">
+        <div class="flex items-center gap-4">
+          <!-- 封面 -->
+          <div 
+            @click="showPlaylist = true"
+            class="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0 shadow-md cursor-pointer relative group"
+          >
+            <img 
+              v-if="currentVideo?.cover"
+              :src="currentVideo.cover"
+              referrerpolicy="no-referrer"
+              class="w-full h-full object-cover transition-transform group-hover:scale-110"
+            />
+            <!-- 播放动画覆盖层 -->
+            <div v-if="isPlaying" class="absolute inset-0 bg-black/20 flex items-center justify-center gap-1">
+              <div class="w-1 h-3 bg-white rounded-full animate-music-bar-1"></div>
+              <div class="w-1 h-5 bg-white rounded-full animate-music-bar-2"></div>
+              <div class="w-1 h-2 bg-white rounded-full animate-music-bar-3"></div>
+            </div>
+          </div>
+
+          <!-- 信息 -->
+          <div class="flex-1 min-w-0" @click="showPlaylist = true">
+            <p class="font-bold text-gray-900 truncate text-sm mb-0.5">{{ currentTrack?.title }}</p>
+            <div class="flex items-center gap-2 text-xs text-gray-400">
+              <span class="font-mono">{{ formattedCurrentTime }} / {{ formattedDuration }}</span>
+              <span v-if="currentPlaylist.length > 1" class="px-1.5 py-0.5 rounded bg-pink-50 text-pink-500 font-medium text-[10px]">
                 {{ currentIndex + 1 }}/{{ currentPlaylist.length }}
               </span>
-            </p>
+            </div>
           </div>
-          <!-- 辅助按钮组 -->
-          <div class="flex items-center gap-1">
-            <button @click="cyclePlaybackRate" class="w-10 h-10 rounded-full bg-farm-50 text-farm-700 text-sm font-bold flex items-center justify-center active:bg-farm-100">
-              {{ playbackRate }}x
+
+          <!-- 控制按钮 -->
+          <div class="flex items-center gap-2">
+            <button 
+              @click="togglePlay"
+              :disabled="isLoading"
+              class="w-12 h-12 rounded-full bg-pink-500 text-white flex items-center justify-center shadow-lg shadow-pink-200 hover:scale-105 active:scale-95 transition-all"
+            >
+              <div v-if="isLoading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              <Pause v-else-if="isPlaying" :size="24" fill="currentColor" />
+              <Play v-else :size="24" fill="currentColor" class="ml-1" />
             </button>
-            <button @click="toggleFavorite" class="w-10 h-10 rounded-full bg-farm-50 flex items-center justify-center active:bg-farm-100">
-              <Heart 
-                :size="20" 
-                :class="isCurrentFavorite ? 'text-red-500 fill-red-500' : 'text-farm-400'"
-              />
-            </button>
-            <button @click="showPlaylist = true" class="w-10 h-10 rounded-full bg-farm-50 text-farm-600 flex items-center justify-center active:bg-farm-100">
-              <List :size="20" />
+            
+            <button @click="nextTrack" class="w-10 h-10 rounded-full bg-pink-50 text-pink-600 flex items-center justify-center hover:bg-pink-100 transition-colors">
+              <SkipForward :size="20" fill="currentColor" />
             </button>
           </div>
-        </div>
-
-        <!-- 主控制按钮 - 大按钮更易操作 -->
-        <div class="flex items-center justify-center gap-3">
-          <!-- 快退15秒 -->
-          <button 
-            @click="rewind" 
-            class="w-14 h-14 rounded-full bg-farm-50 text-farm-600 flex flex-col items-center justify-center active:bg-farm-100 active:scale-95 transition-transform"
-          >
-            <RotateCcw :size="22" />
-            <span class="text-[10px] font-medium -mt-0.5">15秒</span>
-          </button>
-          
-          <!-- 上一曲 -->
-          <button 
-            @click="previousTrack" 
-            class="w-12 h-12 rounded-full bg-farm-100 text-farm-700 flex items-center justify-center active:bg-farm-200 active:scale-95 transition-transform"
-          >
-            <SkipBack :size="24" fill="currentColor" />
-          </button>
-          
-          <!-- 播放/暂停 - 最大最明显 -->
-          <button 
-            @click="togglePlay"
-            :disabled="isLoading"
-            class="w-16 h-16 rounded-full bg-nature-500 text-white flex items-center justify-center shadow-lg active:bg-nature-600 active:scale-95 transition-transform disabled:opacity-70"
-          >
-            <div v-if="isLoading" class="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-            <Pause v-else-if="isPlaying" :size="30" fill="currentColor" />
-            <Play v-else :size="30" fill="currentColor" class="ml-1" />
-          </button>
-          
-          <!-- 下一曲 -->
-          <button 
-            @click="nextTrack" 
-            class="w-12 h-12 rounded-full bg-farm-100 text-farm-700 flex items-center justify-center active:bg-farm-200 active:scale-95 transition-transform"
-          >
-            <SkipForward :size="24" fill="currentColor" />
-          </button>
-          
-          <!-- 快进15秒 -->
-          <button 
-            @click="forward" 
-            class="w-14 h-14 rounded-full bg-farm-50 text-farm-600 flex flex-col items-center justify-center active:bg-farm-100 active:scale-95 transition-transform"
-          >
-            <RotateCw :size="22" />
-            <span class="text-[10px] font-medium -mt-0.5">15秒</span>
-          </button>
-        </div>
-
-        <!-- 音量控制 - 放底部，可选显示 -->
-        <div class="flex items-center justify-center gap-3 mt-4">
-          <button @click="toggleMute" class="w-8 h-8 flex items-center justify-center text-farm-500">
-            <VolumeX v-if="volume === 0" :size="20" />
-            <Volume2 v-else :size="20" />
-          </button>
-          <input 
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            :value="volume"
-            @input="onVolumeChange"
-            class="flex-1 max-w-[200px] h-2 bg-farm-200 rounded-full appearance-none cursor-pointer accent-nature-500"
-          />
         </div>
       </div>
     </div>
 
-    <!-- 播放列表弹窗 - 全屏显示，从上往下排列 -->
+    <!-- 播放列表弹窗 - 半屏抽屉 -->
     <div 
       v-if="showPlaylist" 
-      class="fixed inset-0 bg-white z-50 flex flex-col"
+      class="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-50 flex items-end"
+      @click.self="showPlaylist = false"
     >
-      <!-- 头部 -->
-      <div class="flex items-center justify-between p-4 border-b border-farm-100 bg-white sticky top-0">
-        <h3 class="font-bold text-farm-800">播放列表 ({{ currentPlaylist.length }})</h3>
-        <button @click="showPlaylist = false" class="p-2 rounded-full bg-farm-100 text-farm-500">
-          <X :size="18" />
-        </button>
-      </div>
-      
-      <!-- 列表内容 - 可滚动 -->
-      <div class="flex-1 overflow-y-auto pb-4">
-        <div 
-          v-for="(track, index) in currentPlaylist" 
-          :key="track.cid"
-          @click="loadAndPlay(index); showPlaylist = false"
-          class="flex items-center gap-3 px-4 py-3 hover:bg-farm-50 active:bg-farm-100 cursor-pointer border-b border-farm-50"
-          :class="{ 'bg-nature-50': index === currentIndex }"
-        >
-          <div class="w-10 h-10 rounded-lg bg-farm-100 flex items-center justify-center text-farm-400 flex-shrink-0">
-            <span v-if="index === currentIndex && isPlaying" class="flex gap-0.5">
-              <span class="w-1 h-4 bg-nature-500 rounded-full animate-pulse"></span>
-              <span class="w-1 h-4 bg-nature-500 rounded-full animate-pulse delay-100"></span>
-              <span class="w-1 h-4 bg-nature-500 rounded-full animate-pulse delay-200"></span>
-            </span>
-            <span v-else class="text-sm font-mono font-medium">{{ index + 1 }}</span>
+      <div class="bg-white/95 backdrop-blur-xl w-full max-h-[70vh] rounded-t-[2rem] flex flex-col animate-slide-up shadow-2xl border-t border-white/50">
+        <!-- 头部 -->
+        <div class="flex items-center justify-between p-6 border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-md z-10">
+          <h3 class="font-bold text-lg text-gray-800 flex items-center gap-2">
+            <List :size="20" class="text-pink-500" />
+            播放列表 <span class="text-sm font-normal text-gray-400">({{ currentPlaylist.length }})</span>
+          </h3>
+          <div class="flex items-center gap-2">
+            <!-- 播放模式 -->
+            <button @click="cyclePlaybackRate" class="px-3 py-1.5 bg-pink-50 text-pink-600 rounded-lg text-xs font-bold">
+              {{ playbackRate }}x
+            </button>
+            <button @click="showPlaylist = false" class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors">
+              <X :size="20" />
+            </button>
           </div>
-          <div class="flex-1 min-w-0">
-            <p 
-              class="text-base truncate"
-              :class="index === currentIndex ? 'text-nature-600 font-medium' : 'text-farm-700'"
+        </div>
+        
+        <!-- 列表内容 -->
+        <div class="flex-1 overflow-y-auto p-2">
+          <div 
+            v-for="(track, index) in currentPlaylist" 
+            :key="track.cid"
+            @click="loadAndPlay(index)"
+            class="flex items-center gap-4 px-4 py-3.5 rounded-2xl cursor-pointer transition-all group mb-1"
+            :class="index === currentIndex ? 'bg-gradient-to-r from-pink-50 to-transparent' : 'hover:bg-gray-50'"
+          >
+            <div 
+              class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors"
+              :class="index === currentIndex ? 'bg-pink-100 text-pink-600' : 'bg-gray-50 text-gray-400 group-hover:bg-gray-100 group-hover:text-gray-500'"
             >
-              {{ track.title }}
-            </p>
-            <p v-if="track.duration" class="text-xs text-farm-400 mt-0.5">
-              {{ formatTime(track.duration) }}
-            </p>
+              <span v-if="index === currentIndex && isPlaying" class="flex gap-0.5 items-end h-4">
+                <span class="w-1 bg-pink-500 rounded-full animate-music-bar-1"></span>
+                <span class="w-1 bg-pink-500 rounded-full animate-music-bar-2"></span>
+                <span class="w-1 bg-pink-500 rounded-full animate-music-bar-3"></span>
+              </span>
+              <span v-else class="text-sm font-mono font-medium">{{ index + 1 }}</span>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p 
+                class="text-base truncate font-medium transition-colors"
+                :class="index === currentIndex ? 'text-pink-700' : 'text-gray-700'"
+              >
+                {{ track.title }}
+              </p>
+            </div>
+            <div v-if="index === currentIndex" class="text-pink-500">
+              <Play :size="18" fill="currentColor" />
+            </div>
           </div>
-          <!-- 当前播放指示 -->
-          <div v-if="index === currentIndex" class="text-nature-500">
-            <Play :size="18" fill="currentColor" />
+        </div>
+
+        <!-- 底部控制区 -->
+        <div class="p-6 border-t border-gray-100 bg-white/50 backdrop-blur-md pb-8">
+          <div class="flex items-center justify-center gap-6 mb-6">
+            <button @click="rewind" class="flex flex-col items-center gap-1 text-gray-500 hover:text-pink-600 transition-colors">
+              <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                <RotateCcw :size="20" />
+              </div>
+              <span class="text-[10px]">快退</span>
+            </button>
+            <button @click="previousTrack" class="flex flex-col items-center gap-1 text-gray-500 hover:text-pink-600 transition-colors">
+              <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                <SkipBack :size="24" fill="currentColor" />
+              </div>
+              <span class="text-[10px]">上一曲</span>
+            </button>
+            <button @click="togglePlay" class="flex flex-col items-center gap-1 text-pink-600 transition-colors">
+              <div class="w-16 h-16 rounded-full bg-pink-500 text-white flex items-center justify-center shadow-lg shadow-pink-200 hover:scale-105 transition-transform">
+                <Pause v-if="isPlaying" :size="32" fill="currentColor" />
+                <Play v-else :size="32" fill="currentColor" class="ml-1" />
+              </div>
+            </button>
+            <button @click="nextTrack" class="flex flex-col items-center gap-1 text-gray-500 hover:text-pink-600 transition-colors">
+              <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                <SkipForward :size="24" fill="currentColor" />
+              </div>
+              <span class="text-[10px]">下一曲</span>
+            </button>
+            <button @click="forward" class="flex flex-col items-center gap-1 text-gray-500 hover:text-pink-600 transition-colors">
+              <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                <RotateCw :size="20" />
+              </div>
+              <span class="text-[10px]">快进</span>
+            </button>
+          </div>
+          
+          <!-- 音量 -->
+          <div class="flex items-center gap-3 px-4">
+            <button @click="toggleMute" class="text-gray-400 hover:text-pink-500">
+              <VolumeX v-if="volume === 0" :size="20" />
+              <Volume2 v-else :size="20" />
+            </button>
+            <div class="flex-1 h-8 flex items-center">
+              <input 
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                :value="volume"
+                @input="onVolumeChange"
+                class="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-pink-500"
+              />
+            </div>
+            <span class="text-xs font-mono text-gray-400 w-8 text-right">{{ Math.round(volume * 100) }}%</span>
           </div>
         </div>
       </div>
     </div>
-
     <!-- B站登录弹窗 -->
     <BilibiliLogin 
       v-if="showLoginModal"
@@ -944,19 +995,51 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 自定义滑块样式 */
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  background: #36a778;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: 2px solid #ec4899;
   border-radius: 50%;
   cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.1s;
 }
 
-.delay-100 {
-  animation-delay: 100ms;
+input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(1.2);
 }
-.delay-200 {
-  animation-delay: 200ms;
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: 2px solid #ec4899;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.1s;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.animate-slide-up { animation: slideUp 0.3s ease-out; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.animate-music-bar-1 { animation: music-bar 0.5s ease-in-out infinite alternate; }
+.animate-music-bar-2 { animation: music-bar 0.5s ease-in-out infinite alternate 0.1s; }
+.animate-music-bar-3 { animation: music-bar 0.5s ease-in-out infinite alternate 0.2s; }
+@keyframes music-bar { 
+  from { height: 40%; } 
+  to { height: 100%; } 
 }
 </style>

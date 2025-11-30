@@ -109,10 +109,21 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
   watch([volume, playbackRate, currentVideo, currentPlaylist, currentIndex], saveToStorage, { deep: true })
 
   // ===== 进度记忆 =====
+  /**
+   * 生成 track 的唯一标识 key
+   * 必须同时使用 bvid 和 cid 确保不同视频的进度完全隔离
+   */
   function getTrackKey(track) {
     if (!track) return ''
-    const bvid = track.bvid || currentVideo.value?.bvid || 'unknown'
-    const cid = track.cid || '0'
+    // 优先使用 track 自身的 bvid，不要使用 currentVideo 作为回退
+    // 避免切换视频时因 currentVideo 已更新导致 key 错误
+    const bvid = track.bvid
+    const cid = track.cid
+    // 必须同时有 bvid 和 cid 才能生成有效 key
+    if (!bvid || !cid) {
+      console.warn('getTrackKey: 缺少 bvid 或 cid', { bvid, cid, track })
+      return ''
+    }
     return `bilibili:${bvid}:${cid}`
   }
 
@@ -138,6 +149,8 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
 
   function getSavedProgress(track) {
     const key = getTrackKey(track)
+    // 如果无法生成有效 key，返回 0 而不是查找空字符串
+    if (!key) return 0
     return progressMap.value[key]?.position || 0
   }
 

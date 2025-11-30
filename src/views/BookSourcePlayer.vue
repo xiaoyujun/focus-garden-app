@@ -163,7 +163,7 @@ function persistProgress(force = false) {
   saveProgressToStorage()
 }
 
-// 搜索 - 并行搜索所有启用的书源
+// 搜索 - 并行搜索所有启用的书源，实时展示结果
 async function handleSearch() {
   if (!searchQuery.value.trim()) return
   
@@ -184,24 +184,38 @@ async function handleSearch() {
   const keyword = searchQuery.value.trim()
   bookSourceStore.addSearchHistory(keyword)
   
-  // 并行搜索所有书源，使用 Promise.allSettled 确保单个失败不影响整体
+  // 用于去重的 Set
+  const seenKeys = new Set()
+  
+  // 并行搜索所有书源，每个完成后立即展示结果
   const searchPromises = enabledSources.map(async (source) => {
     try {
       const result = await searchThirdParty(source, keyword)
       // 为每个结果添加来源信息
-      return result.results.map(item => ({
+      const sourceResults = result.results.map(item => ({
         ...item,
         sourceId: source.id,
         sourceName: source.name || source.sourceName || '未知书源',
         sourceIcon: source.icon || '📖'
       }))
+      
+      // 实时添加结果（去重）
+      const newResults = sourceResults.filter(item => {
+        const key = `${item.title}-${item.bookUrl}`
+        if (seenKeys.has(key)) return false
+        seenKeys.add(key)
+        return true
+      })
+      
+      if (newResults.length > 0) {
+        searchResults.value = [...searchResults.value, ...newResults]
+      }
     } catch (error) {
       console.warn(`书源 ${source.name} 搜索失败:`, error.message)
       failedSources.value.push({
         name: source.name || '未知书源',
         error: error.message
       })
-      return [] // 返回空数组，不中断其他搜索
     } finally {
       searchedSourceCount.value++
       searchingProgress.value = `搜索中 ${searchedSourceCount.value}/${totalSourceCount.value}`
@@ -209,18 +223,7 @@ async function handleSearch() {
   })
   
   try {
-    const results = await Promise.all(searchPromises)
-    // 扁平化并去重（根据 title + bookUrl）
-    const allResults = results.flat()
-    const seen = new Set()
-    const uniqueResults = allResults.filter(item => {
-      const key = `${item.title}-${item.bookUrl}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-    
-    searchResults.value = uniqueResults
+    await Promise.all(searchPromises)
     
     // 显示失败信息
     if (failedSources.value.length > 0 && searchResults.value.length === 0) {
@@ -640,7 +643,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gradient-to-b from-purple-50 to-indigo-50/30 pb-32">
+  <div class="min-h-screen bg-gradient-to-br from-purple-50 via-white to-indigo-50 pb-36">
     <!-- 隐藏的音频元素 -->
     <audio 
       ref="audioRef"
@@ -653,27 +656,32 @@ onUnmounted(() => {
     />
 
     <!-- 头部 -->
-    <header class="p-4 flex items-center justify-between">
-      <h1 class="text-xl font-bold text-purple-900 flex items-center gap-2">
-        <BookOpen :size="24" class="text-purple-500" />
-        书源听书
+    <header class="pt-6 pb-2 px-6 flex items-center justify-between relative z-10">
+      <h1 class="text-2xl font-bold text-purple-900 flex items-center gap-2.5 tracking-tight">
+        <div class="w-10 h-10 rounded-xl bg-purple-500 flex items-center justify-center shadow-lg shadow-purple-200 text-white">
+          <BookOpen :size="22" />
+        </div>
+        <span>书源听书</span>
       </h1>
       <button 
         @click="showSourceManager = true"
-        class="p-2 rounded-lg bg-purple-100 text-purple-600 hover:bg-purple-200"
+        class="w-10 h-10 rounded-xl bg-white text-purple-600 hover:bg-purple-50 hover:scale-105 transition-all flex items-center justify-center shadow-sm border border-purple-100"
       >
         <Settings :size="20" />
       </button>
     </header>
 
-    <main class="px-4 max-w-md mx-auto">
+    <main class="px-4 max-w-md mx-auto relative z-10">
       <!-- 书源选择 -->
-      <div v-if="bookSourceStore.enabledSources.length === 0" class="mb-4 p-6 bg-white rounded-xl text-center shadow-sm">
-        <BookOpen :size="48" class="mx-auto text-purple-300 mb-4" />
-        <p class="text-purple-600 mb-4">暂无书源，请先添加</p>
+      <div v-if="bookSourceStore.enabledSources.length === 0" class="mb-6 p-8 bg-white rounded-[2rem] text-center shadow-xl shadow-purple-900/5 border border-purple-50">
+        <div class="w-20 h-20 rounded-full bg-purple-50 flex items-center justify-center mx-auto mb-6">
+          <BookOpen :size="36" class="text-purple-300" />
+        </div>
+        <h3 class="text-lg font-bold text-purple-900 mb-2">开始您的听书之旅</h3>
+        <p class="text-purple-400 mb-8 text-sm">添加书源以搜索并收听海量有声书</p>
         <button 
           @click="showSourceManager = true"
-          class="px-6 py-2.5 bg-purple-500 text-white rounded-xl font-medium hover:bg-purple-600"
+          class="px-8 py-3 bg-purple-500 text-white rounded-xl font-bold hover:bg-purple-600 hover:shadow-lg hover:shadow-purple-200 transition-all"
         >
           添加书源
         </button>
@@ -681,86 +689,83 @@ onUnmounted(() => {
 
       <template v-else>
         <!-- 已启用书源提示 -->
-        <div class="mb-3 px-3 py-2 rounded-lg text-sm bg-purple-50 text-purple-700 flex items-center justify-between">
+        <div 
+          class="mb-4 px-4 py-2.5 rounded-2xl text-xs font-medium bg-white/60 text-purple-700 flex items-center justify-between border border-white/50 backdrop-blur-sm shadow-sm cursor-pointer hover:bg-white/80 transition-colors"
+          @click="showSourceManager = true"
+        >
           <div class="flex items-center gap-2">
-            <span>📚</span>
+            <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
             <span>已启用 {{ bookSourceStore.enabledSources.length }} 个书源</span>
           </div>
-          <button 
-            @click="showSourceManager = true"
-            class="text-xs text-purple-500 hover:text-purple-700"
-          >
-            管理
-          </button>
+          <span class="text-purple-400 flex items-center gap-1">
+            管理 <ChevronRight :size="12" />
+          </span>
         </div>
 
         <!-- 搜索框 -->
-        <div class="relative mb-4">
-          <input 
-            v-model="searchQuery"
-            @keyup.enter="handleSearch"
-            type="text"
-            placeholder="搜索有声书..."
-            class="w-full px-4 py-3 pl-12 bg-white rounded-xl border border-purple-200 focus:border-purple-400 focus:ring-2 focus:ring-purple-100 outline-none transition-all"
-          />
-          <Search :size="20" class="absolute left-4 top-1/2 -translate-y-1/2 text-purple-400" />
-          <button 
-            v-if="searchQuery"
-            @click="searchQuery = ''; searchResults = []"
-            class="absolute right-12 top-1/2 -translate-y-1/2 text-purple-400 hover:text-purple-600"
-          >
-            <X :size="18" />
-          </button>
-          <button 
-            @click="handleSearch"
-            :disabled="isSearching"
-            class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-purple-500 text-white rounded-lg text-sm font-medium hover:bg-purple-600 disabled:opacity-50"
-          >
-            {{ isSearching ? '搜索中' : '搜索' }}
-          </button>
+        <div class="relative mb-6 group">
+          <div class="absolute inset-0 bg-purple-200/30 rounded-2xl blur-xl transition-opacity opacity-0 group-hover:opacity-100"></div>
+          <div class="relative bg-white rounded-2xl shadow-lg shadow-purple-100/50 overflow-hidden flex items-center transition-transform focus-within:scale-[1.02]">
+            <div class="pl-4 text-purple-300">
+              <Search :size="20" />
+            </div>
+            <input 
+              v-model="searchQuery"
+              @keyup.enter="handleSearch"
+              type="text"
+              placeholder="搜索有声书..."
+              class="w-full px-3 py-4 bg-transparent outline-none text-purple-900 placeholder:text-purple-300"
+            />
+            <button 
+              v-if="searchQuery"
+              @click="searchQuery = ''; searchResults = []"
+              class="p-2 text-purple-300 hover:text-purple-500 transition-colors"
+            >
+              <X :size="18" />
+            </button>
+            <button 
+              @click="handleSearch"
+              :disabled="isSearching"
+              class="m-1.5 px-4 py-2 bg-purple-500 text-white rounded-xl text-sm font-bold hover:bg-purple-600 disabled:opacity-50 transition-colors shadow-md shadow-purple-200"
+            >
+              {{ isSearching ? '...' : '搜索' }}
+            </button>
+          </div>
         </div>
 
         <!-- 搜索进度条 -->
-        <div v-if="isSearching && totalSourceCount > 0" class="mb-3">
-          <div class="flex items-center justify-between text-xs text-purple-500 mb-1">
+        <div v-if="isSearching && totalSourceCount > 0" class="mb-4 px-2">
+          <div class="flex items-center justify-between text-xs font-medium text-purple-500 mb-1.5">
             <span>{{ searchingProgress }}</span>
-            <span v-if="failedSources.length > 0" class="text-orange-500">
+            <span v-if="failedSources.length > 0" class="text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded">
               {{ failedSources.length }} 个失败
             </span>
           </div>
-          <div class="h-1.5 bg-purple-100 rounded-full overflow-hidden">
+          <div class="h-2 bg-purple-100 rounded-full overflow-hidden">
             <div 
-              class="h-full bg-purple-500 transition-all duration-300"
+              class="h-full bg-gradient-to-r from-purple-400 to-purple-600 transition-all duration-300 ease-out rounded-full relative"
               :style="{ width: (searchedSourceCount / totalSourceCount * 100) + '%' }"
-            ></div>
+            >
+              <div class="absolute inset-0 bg-white/30 animate-shimmer"></div>
+            </div>
           </div>
         </div>
 
         <!-- 标签切换 -->
-        <div class="flex gap-2 mb-4">
+        <div class="flex p-1 bg-purple-100/50 rounded-2xl mb-6">
           <button 
-            @click="activeTab = 'search'"
-            class="flex-1 py-2 rounded-lg text-sm font-medium transition-colors"
-            :class="activeTab === 'search' ? 'bg-purple-500 text-white' : 'bg-purple-100 text-purple-600'"
+            v-for="tab in [
+              { id: 'search', icon: Search, label: '搜索' },
+              { id: 'history', icon: Clock, label: '历史' },
+              { id: 'bookshelf', icon: BookOpen, label: '书架' }
+            ]"
+            :key="tab.id"
+            @click="activeTab = tab.id"
+            class="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5"
+            :class="activeTab === tab.id ? 'bg-white text-purple-600 shadow-sm shadow-purple-100' : 'text-purple-400 hover:text-purple-500'"
           >
-            <Search :size="16" class="inline mr-1" />
-            搜索
-          </button>
-          <button 
-            @click="activeTab = 'history'"
-            class="flex-1 py-2 rounded-lg text-sm font-medium transition-colors"
-            :class="activeTab === 'history' ? 'bg-purple-500 text-white' : 'bg-purple-100 text-purple-600'"
-          >
-            <Clock :size="16" class="inline mr-1" />
-            历史
-          </button>
-          <button 
-            @click="activeTab = 'bookshelf'"
-            class="flex-1 py-2 rounded-lg text-sm font-medium transition-colors"
-            :class="activeTab === 'bookshelf' ? 'bg-purple-500 text-white' : 'bg-purple-100 text-purple-600'"
-          >
-            <BookOpen :size="16" class="inline mr-1" />
-            书架
+            <component :is="tab.icon" :size="16" />
+            {{ tab.label }}
           </button>
         </div>
 
@@ -807,29 +812,33 @@ onUnmounted(() => {
             v-for="item in searchResults" 
             :key="item.id"
             @click="viewBookDetail(item)"
-            class="flex gap-3 p-3 bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+            class="flex gap-4 p-4 bg-white rounded-2xl shadow-sm hover:shadow-lg shadow-purple-100/50 hover:-translate-y-0.5 transition-all cursor-pointer border border-purple-50 group"
           >
             <div class="relative flex-shrink-0">
-              <img 
-                v-if="item.cover"
-                :src="item.cover" 
-                :alt="item.title"
-                referrerpolicy="no-referrer"
-                class="w-20 h-28 object-cover rounded-lg"
-              />
-              <div v-else class="w-20 h-28 bg-purple-100 rounded-lg flex items-center justify-center">
-                <BookOpen :size="24" class="text-purple-300" />
+              <div class="w-20 h-28 rounded-xl overflow-hidden shadow-md bg-purple-100">
+                <img 
+                  v-if="item.cover"
+                  :src="item.cover" 
+                  :alt="item.title"
+                  referrerpolicy="no-referrer"
+                  class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
+                <div v-else class="w-full h-full flex items-center justify-center">
+                  <BookOpen :size="24" class="text-purple-300" />
+                </div>
               </div>
               <!-- 来源标识 -->
-              <div class="absolute -bottom-1 -right-1 px-1.5 py-0.5 bg-purple-600 text-white text-[10px] rounded-md shadow-sm max-w-[80px] truncate">
+              <div class="absolute -bottom-2 -right-2 px-2 py-1 bg-purple-600 text-white text-[10px] font-bold rounded-lg shadow-md max-w-[90px] truncate border-2 border-white">
                 {{ item.sourceIcon || '📖' }} {{ item.sourceName || '未知' }}
               </div>
             </div>
-            <div class="flex-1 min-w-0">
-              <h3 class="font-medium text-purple-800 line-clamp-2 text-sm">{{ item.title }}</h3>
-              <p class="text-xs text-purple-400 mt-1">{{ item.author || item.artist }}</p>
-              <p v-if="item.category" class="text-xs text-purple-500 mt-0.5">{{ item.category }}</p>
-              <p v-if="item.description" class="text-xs text-purple-300 mt-1 line-clamp-2">{{ item.description }}</p>
+            <div class="flex-1 min-w-0 py-1">
+              <h3 class="font-bold text-purple-900 line-clamp-2 text-base mb-1 group-hover:text-purple-600 transition-colors">{{ item.title }}</h3>
+              <div class="flex items-center gap-2 text-xs text-purple-400 mb-2">
+                <span class="flex items-center gap-1"><User :size="12" /> {{ item.author || item.artist }}</span>
+                <span v-if="item.category" class="px-1.5 py-0.5 bg-purple-50 rounded text-purple-500">{{ item.category }}</span>
+              </div>
+              <p v-if="item.description" class="text-xs text-purple-400/80 line-clamp-2 leading-relaxed">{{ item.description }}</p>
             </div>
           </div>
 
@@ -908,93 +917,67 @@ onUnmounted(() => {
     <!-- 底部播放器 -->
     <div 
       v-if="currentTrack"
-      class="fixed bottom-0 left-0 right-0 bg-white border-t border-purple-100 shadow-lg"
+      class="fixed bottom-24 left-4 right-4 z-40"
     >
-      <!-- 进度条 -->
-      <div 
-        class="h-1 bg-purple-100 cursor-pointer"
-        @mousedown="onProgressMouseDown"
-        @mousemove="onProgressMouseMove"
-        @mouseup="onProgressMouseUp"
-        @mouseleave="onProgressMouseUp"
-      >
+      <div class="bg-white/90 backdrop-blur-xl rounded-[2rem] p-4 shadow-2xl shadow-purple-900/10 border border-white/50">
+        <!-- 进度条 -->
         <div 
-          class="h-full bg-purple-500 transition-all"
-          :style="{ width: displayProgress + '%' }"
-        ></div>
-      </div>
-
-      <div class="px-4 py-3">
-        <!-- 当前播放信息 -->
-        <div class="flex items-center gap-3 mb-3">
-          <div v-if="currentBook?.cover" class="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-            <img :src="currentBook.cover" referrerpolicy="no-referrer" class="w-full h-full object-cover" />
+          class="absolute -top-1 left-6 right-6 h-2 cursor-pointer group"
+          @mousedown="onProgressMouseDown"
+          @mousemove="onProgressMouseMove"
+          @mouseup="onProgressMouseUp"
+          @mouseleave="onProgressMouseUp"
+        >
+          <div class="h-full bg-purple-100 rounded-full overflow-hidden">
+            <div 
+              class="h-full bg-gradient-to-r from-purple-400 to-purple-600 transition-all group-hover:from-purple-500 group-hover:to-purple-700"
+              :style="{ width: displayProgress + '%' }"
+            ></div>
           </div>
-          <div v-else class="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
-            <BookOpen :size="20" class="text-purple-300" />
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="font-medium text-purple-800 truncate text-sm">{{ currentTrack?.title }}</p>
-            <p class="text-xs text-purple-400">
-              {{ formattedCurrentTime }} / {{ formattedDuration }}
-              <span v-if="currentPlaylist.length > 1" class="ml-2">
-                {{ currentIndex + 1 }}/{{ currentPlaylist.length }}
-              </span>
-            </p>
-          </div>
-          <button @click="toggleFavorite" class="p-2">
-            <Heart :size="20" class="text-purple-400" />
-          </button>
-          <button @click="showPlaylist = true" class="p-2 text-purple-600">
-            <List :size="20" />
-          </button>
         </div>
 
-        <!-- 控制按钮 -->
-        <div class="flex items-center justify-center gap-4">
-          <button @click="rewind" class="p-2 text-purple-600 relative">
-            <RotateCcw :size="20" />
-            <span class="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px]">15</span>
-          </button>
-          <button @click="previousTrack" class="p-2 text-purple-600">
-            <SkipBack :size="22" fill="currentColor" />
-          </button>
-          <button 
-            @click="togglePlay"
-            :disabled="isLoading"
-            class="w-12 h-12 rounded-full bg-purple-500 text-white flex items-center justify-center shadow-lg"
+        <div class="flex items-center gap-4">
+          <!-- 封面 -->
+          <div 
+            @click="showPlaylist = true"
+            class="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0 shadow-md cursor-pointer relative group"
           >
-            <div v-if="isLoading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-            <Pause v-else-if="isPlaying" :size="24" fill="currentColor" />
-            <Play v-else :size="24" fill="currentColor" class="ml-0.5" />
-          </button>
-          <button @click="nextTrack" class="p-2 text-purple-600">
-            <SkipForward :size="22" fill="currentColor" />
-          </button>
-          <button @click="forward" class="p-2 text-purple-600 relative">
-            <RotateCw :size="20" />
-            <span class="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px]">15</span>
-          </button>
-        </div>
+            <img v-if="currentBook?.cover" :src="currentBook.cover" referrerpolicy="no-referrer" class="w-full h-full object-cover transition-transform group-hover:scale-110" />
+            <div v-else class="w-full h-full bg-purple-100 flex items-center justify-center">
+              <BookOpen :size="24" class="text-purple-300" />
+            </div>
+            <!-- 播放动画覆盖层 -->
+            <div v-if="isPlaying" class="absolute inset-0 bg-black/20 flex items-center justify-center gap-1">
+              <div class="w-1 h-3 bg-white rounded-full animate-music-bar-1"></div>
+              <div class="w-1 h-5 bg-white rounded-full animate-music-bar-2"></div>
+              <div class="w-1 h-2 bg-white rounded-full animate-music-bar-3"></div>
+            </div>
+          </div>
 
-        <!-- 附加控制 -->
-        <div class="flex items-center justify-between mt-3 px-2">
-          <button @click="toggleMute" class="text-purple-500">
-            <VolumeX v-if="volume === 0" :size="18" />
-            <Volume2 v-else :size="18" />
-          </button>
-          <input 
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            :value="volume"
-            @input="onVolumeChange"
-            class="w-20 h-1 bg-purple-200 rounded-full appearance-none cursor-pointer accent-purple-500"
-          />
-          <button @click="cyclePlaybackRate" class="text-purple-600 text-sm font-mono font-bold">
-            {{ playbackRate }}x
-          </button>
+          <!-- 信息 -->
+          <div class="flex-1 min-w-0" @click="showPlaylist = true">
+            <p class="font-bold text-purple-900 truncate text-sm mb-0.5">{{ currentTrack?.title }}</p>
+            <div class="flex items-center gap-2 text-xs text-purple-400">
+              <span class="font-mono">{{ formattedCurrentTime }} / {{ formattedDuration }}</span>
+            </div>
+          </div>
+
+          <!-- 控制按钮 -->
+          <div class="flex items-center gap-2">
+            <button 
+              @click="togglePlay"
+              :disabled="isLoading"
+              class="w-12 h-12 rounded-full bg-purple-500 text-white flex items-center justify-center shadow-lg shadow-purple-200 hover:scale-105 active:scale-95 transition-all"
+            >
+              <div v-if="isLoading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              <Pause v-else-if="isPlaying" :size="24" fill="currentColor" />
+              <Play v-else :size="24" fill="currentColor" class="ml-1" />
+            </button>
+            
+            <button @click="nextTrack" class="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center hover:bg-purple-100 transition-colors">
+              <SkipForward :size="20" fill="currentColor" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1002,41 +985,50 @@ onUnmounted(() => {
     <!-- 播放列表弹窗 -->
     <div 
       v-if="showPlaylist" 
-      class="fixed inset-0 bg-white z-50 flex flex-col"
+      class="fixed inset-0 bg-purple-900/20 backdrop-blur-sm z-50 flex items-end"
+      @click.self="showPlaylist = false"
     >
-      <div class="flex items-center justify-between p-4 border-b border-purple-100 bg-white sticky top-0">
-        <h3 class="font-bold text-purple-800">章节列表 ({{ currentPlaylist.length }})</h3>
-        <button @click="showPlaylist = false" class="p-2 rounded-full bg-purple-100 text-purple-500">
-          <X :size="18" />
-        </button>
-      </div>
-      
-      <div class="flex-1 overflow-y-auto pb-4">
-        <div 
-          v-for="(track, index) in currentPlaylist" 
-          :key="track.cid || index"
-          @click="loadAndPlay(index); showPlaylist = false"
-          class="flex items-center gap-3 px-4 py-3 hover:bg-purple-50 active:bg-purple-100 cursor-pointer border-b border-purple-50"
-          :class="{ 'bg-purple-50': index === currentIndex }"
-        >
-          <div class="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center text-purple-400 flex-shrink-0">
-            <span v-if="index === currentIndex && isPlaying" class="flex gap-0.5">
-              <span class="w-1 h-4 bg-purple-500 rounded-full animate-pulse"></span>
-              <span class="w-1 h-4 bg-purple-500 rounded-full animate-pulse delay-100"></span>
-              <span class="w-1 h-4 bg-purple-500 rounded-full animate-pulse delay-200"></span>
-            </span>
-            <span v-else class="text-sm font-mono font-medium">{{ index + 1 }}</span>
-          </div>
-          <div class="flex-1 min-w-0">
-            <p 
-              class="text-base truncate"
-              :class="index === currentIndex ? 'text-purple-600 font-medium' : 'text-purple-700'"
+      <div class="bg-white/95 backdrop-blur-xl w-full max-h-[70vh] rounded-t-[2rem] flex flex-col animate-slide-up shadow-2xl shadow-purple-900/20 border-t border-white/50">
+        <div class="flex items-center justify-between p-6 border-b border-purple-50 sticky top-0 bg-white/95 backdrop-blur-md z-10">
+          <h3 class="font-bold text-lg text-purple-800 flex items-center gap-2">
+            <List :size="20" class="text-purple-500" />
+            章节列表 <span class="text-sm font-normal text-purple-400">({{ currentPlaylist.length }})</span>
+          </h3>
+          <button @click="showPlaylist = false" class="w-8 h-8 rounded-full bg-purple-50 flex items-center justify-center text-purple-400 hover:bg-purple-100 hover:text-purple-600 transition-colors">
+            <X :size="20" />
+          </button>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto p-2">
+          <div 
+            v-for="(track, index) in currentPlaylist" 
+            :key="track.cid || index"
+            @click="loadAndPlay(index); showPlaylist = false"
+            class="flex items-center gap-4 px-4 py-3.5 rounded-2xl cursor-pointer transition-all group mb-1"
+            :class="index === currentIndex ? 'bg-gradient-to-r from-purple-50 to-transparent' : 'hover:bg-purple-50'"
+          >
+            <div 
+              class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors"
+              :class="index === currentIndex ? 'bg-purple-100 text-purple-600' : 'bg-purple-50 text-purple-400 group-hover:bg-purple-100 group-hover:text-purple-500'"
             >
-              {{ track.title }}
-            </p>
-          </div>
-          <div v-if="index === currentIndex" class="text-purple-500">
-            <Play :size="18" fill="currentColor" />
+              <span v-if="index === currentIndex && isPlaying" class="flex gap-0.5 items-end h-4">
+                <span class="w-1 bg-purple-500 rounded-full animate-music-bar-1"></span>
+                <span class="w-1 bg-purple-500 rounded-full animate-music-bar-2"></span>
+                <span class="w-1 bg-purple-500 rounded-full animate-music-bar-3"></span>
+              </span>
+              <span v-else class="text-sm font-mono font-medium">{{ index + 1 }}</span>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p 
+                class="text-base truncate font-medium transition-colors"
+                :class="index === currentIndex ? 'text-purple-700' : 'text-purple-700'"
+              >
+                {{ track.title }}
+              </p>
+            </div>
+            <div v-if="index === currentIndex" class="text-purple-500">
+              <Play :size="18" fill="currentColor" />
+            </div>
           </div>
         </div>
       </div>
@@ -1045,24 +1037,36 @@ onUnmounted(() => {
     <!-- 书籍详情弹窗 -->
     <div 
       v-if="showBookDetail && selectedBook" 
-      class="fixed inset-0 bg-white z-50 flex flex-col"
+      class="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in"
     >
-      <!-- 头部 -->
-      <div class="bg-gradient-to-b from-purple-500 to-purple-600 text-white p-4 pb-6">
-        <div class="flex items-center justify-between mb-4">
-          <button @click="showBookDetail = false" class="p-2 -ml-2 rounded-lg hover:bg-white/20">
-            <X :size="20" />
+      <!-- 头部背景 -->
+      <div class="absolute top-0 left-0 right-0 h-64 overflow-hidden z-0">
+        <img 
+          v-if="selectedBook.cover"
+          :src="selectedBook.cover" 
+          referrerpolicy="no-referrer"
+          class="w-full h-full object-cover blur-xl opacity-50 transform scale-110"
+        />
+        <div class="absolute inset-0 bg-gradient-to-b from-purple-900/30 to-white"></div>
+      </div>
+
+      <!-- 头部内容 -->
+      <div class="relative z-10 flex flex-col h-full">
+        <div class="p-4 flex items-center justify-between">
+          <button @click="showBookDetail = false" class="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/30 transition-colors shadow-sm">
+            <ChevronLeft :size="24" />
           </button>
           <button 
             @click="isInBookshelf(selectedBook) ? removeFromBookshelf(selectedBook) : addToBookshelf(selectedBook)"
-            class="p-2 rounded-lg hover:bg-white/20"
+            class="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center hover:bg-white/30 transition-colors shadow-sm"
+            :class="isInBookshelf(selectedBook) ? 'text-red-500' : 'text-white'"
           >
-            <Heart :size="20" :fill="isInBookshelf(selectedBook) ? 'currentColor' : 'none'" />
+            <Heart :size="22" :fill="isInBookshelf(selectedBook) ? 'currentColor' : 'none'" />
           </button>
         </div>
-        
-        <div class="flex gap-4">
-          <div class="w-24 h-32 rounded-lg overflow-hidden flex-shrink-0 shadow-lg">
+
+        <div class="px-6 pt-2 pb-6 flex gap-6 items-end">
+          <div class="w-32 h-44 rounded-2xl overflow-hidden flex-shrink-0 shadow-2xl shadow-purple-900/20 border-2 border-white transform translate-y-2">
             <img 
               v-if="selectedBook.cover" 
               :src="selectedBook.cover" 
@@ -1070,79 +1074,91 @@ onUnmounted(() => {
               referrerpolicy="no-referrer"
               class="w-full h-full object-cover"
             />
-            <div v-else class="w-full h-full bg-purple-400 flex items-center justify-center">
-              <BookOpen :size="32" class="text-purple-200" />
+            <div v-else class="w-full h-full bg-purple-100 flex items-center justify-center">
+              <BookOpen :size="32" class="text-purple-300" />
             </div>
           </div>
-          <div class="flex-1 min-w-0">
-            <h2 class="text-lg font-bold line-clamp-2">{{ selectedBook.title }}</h2>
-            <p class="text-purple-200 text-sm mt-1">{{ selectedBook.author || selectedBook.artist || '未知作者' }}</p>
-            <p v-if="selectedBook.category" class="text-purple-200 text-xs mt-1">{{ selectedBook.category }}</p>
-            <p class="text-purple-100 text-xs mt-2 line-clamp-2">{{ selectedBook.description || '暂无简介' }}</p>
+          <div class="flex-1 min-w-0 pb-2">
+            <h2 class="text-2xl font-bold text-gray-900 line-clamp-2 mb-2 drop-shadow-sm leading-tight">{{ selectedBook.title }}</h2>
+            <p class="text-purple-600 font-medium flex items-center gap-1 mb-1">
+              <User :size="16" />
+              {{ selectedBook.author || selectedBook.artist || '未知作者' }}
+            </p>
+            <p v-if="selectedBook.category" class="text-sm text-gray-500 bg-purple-50 px-2 py-0.5 rounded-lg inline-block">
+              {{ selectedBook.category }}
+            </p>
           </div>
         </div>
-      </div>
 
-      <!-- 操作按钮 -->
-      <div class="flex gap-3 p-4 border-b border-purple-100">
-        <button 
-          @click="playFromChapter(selectedBook, 0)"
-          :disabled="isLoadingChapters || !bookChapters.length"
-          class="flex-1 py-3 bg-purple-500 text-white rounded-xl font-medium disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          <Play :size="18" fill="currentColor" />
-          从头开始
-        </button>
-        <button 
-          @click="isInBookshelf(selectedBook) ? removeFromBookshelf(selectedBook) : addToBookshelf(selectedBook)"
-          class="px-4 py-3 rounded-xl font-medium flex items-center gap-2"
-          :class="isInBookshelf(selectedBook) ? 'bg-red-100 text-red-600' : 'bg-purple-100 text-purple-600'"
-        >
-          <Heart :size="18" :fill="isInBookshelf(selectedBook) ? 'currentColor' : 'none'" />
-          {{ isInBookshelf(selectedBook) ? '移除' : '加入书架' }}
-        </button>
-      </div>
+        <div class="flex-1 bg-white rounded-t-[2rem] -mt-4 shadow-inner overflow-hidden flex flex-col border-t border-purple-50">
+          <div class="p-6 pb-2">
+             <div class="flex gap-3 mb-6">
+              <button 
+                @click="playFromChapter(selectedBook, 0)"
+                :disabled="isLoadingChapters || !bookChapters.length"
+                class="flex-1 py-3.5 bg-purple-500 text-white rounded-xl font-bold disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-purple-600 shadow-lg shadow-purple-200 transition-all active:scale-95"
+              >
+                <Play :size="20" fill="currentColor" />
+                开始播放
+              </button>
+              <button 
+                @click="isInBookshelf(selectedBook) ? removeFromBookshelf(selectedBook) : addToBookshelf(selectedBook)"
+                class="px-5 py-3.5 rounded-xl font-medium flex items-center gap-2 border-2 transition-all active:scale-95"
+                :class="isInBookshelf(selectedBook) ? 'border-red-100 bg-red-50 text-red-600' : 'border-purple-100 bg-purple-50 text-purple-600'"
+              >
+                <Heart :size="20" :fill="isInBookshelf(selectedBook) ? 'currentColor' : 'none'" />
+              </button>
+            </div>
+            
+            <h3 class="font-bold text-gray-900 mb-2 flex items-center gap-2">
+              <span>简介</span>
+            </h3>
+            <p class="text-gray-500 text-sm leading-relaxed mb-6 line-clamp-4">{{ selectedBook.description || '暂无简介' }}</p>
+            
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-bold text-gray-900">章节列表</h3>
+              <span v-if="bookChapters.length" class="text-purple-500 text-sm font-medium bg-purple-50 px-2 py-0.5 rounded-lg">{{ bookChapters.length }} 章</span>
+            </div>
+          </div>
 
-      <!-- 章节列表 -->
-      <div class="flex-1 overflow-y-auto">
-        <div class="p-4">
-          <h3 class="font-bold text-purple-800 mb-3">
-            章节列表
-            <span v-if="bookChapters.length" class="text-purple-400 font-normal text-sm ml-2">({{ bookChapters.length }}章)</span>
-          </h3>
-          
-          <!-- 加载中 -->
-          <div v-if="isLoadingChapters" class="text-center py-12">
-            <div class="w-10 h-10 border-3 border-purple-200 border-t-purple-500 rounded-full animate-spin mx-auto mb-3"></div>
-            <p class="text-purple-400">加载章节中...</p>
-          </div>
-          
-          <!-- 错误提示 -->
-          <div v-else-if="chaptersError" class="text-center py-12">
-            <p class="text-red-500 mb-4">{{ chaptersError }}</p>
-            <button 
-              @click="viewBookDetail(selectedBook)"
-              class="px-4 py-2 bg-purple-100 text-purple-600 rounded-lg"
-            >
-              重试
-            </button>
-          </div>
-          
           <!-- 章节列表 -->
-          <div v-else class="space-y-1">
-            <div 
-              v-for="(chapter, index) in bookChapters" 
-              :key="chapter.id || index"
-              @click="playFromChapter(selectedBook, index)"
-              class="flex items-center gap-3 p-3 rounded-xl hover:bg-purple-50 active:bg-purple-100 cursor-pointer transition-colors"
-            >
-              <div class="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-400 flex-shrink-0">
-                <span class="text-xs font-mono">{{ index + 1 }}</span>
+          <div class="flex-1 overflow-y-auto px-4 pb-4">
+            <!-- 加载中 -->
+            <div v-if="isLoadingChapters" class="text-center py-12">
+              <div class="w-10 h-10 border-4 border-purple-200 border-t-purple-500 rounded-full animate-spin mx-auto mb-3"></div>
+              <p class="text-purple-400">加载章节中...</p>
+            </div>
+            
+            <!-- 错误提示 -->
+            <div v-else-if="chaptersError" class="text-center py-12">
+              <div class="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-400">
+                <AlertCircle :size="32" />
               </div>
-              <div class="flex-1 min-w-0">
-                <p class="text-sm text-purple-700 truncate">{{ chapter.title }}</p>
+              <p class="text-red-600 mb-4 font-medium">{{ chaptersError }}</p>
+              <button 
+                @click="viewBookDetail(selectedBook)"
+                class="px-6 py-2 bg-purple-100 text-purple-600 rounded-xl font-bold hover:bg-purple-200"
+              >
+                重试
+              </button>
+            </div>
+            
+            <!-- 章节列表 -->
+            <div v-else class="space-y-1">
+              <div 
+                v-for="(chapter, index) in bookChapters" 
+                :key="chapter.id || index"
+                @click="playFromChapter(selectedBook, index)"
+                class="flex items-center gap-4 p-3.5 rounded-2xl hover:bg-purple-50 active:bg-purple-100 cursor-pointer transition-colors group"
+              >
+                <div class="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 flex-shrink-0 group-hover:bg-purple-100 group-hover:text-purple-500 transition-colors">
+                  <span class="text-sm font-mono font-medium">{{ index + 1 }}</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-gray-700 truncate font-medium group-hover:text-purple-700 transition-colors">{{ chapter.title }}</p>
+                </div>
+                <Play :size="16" class="text-gray-300 group-hover:text-purple-400" />
               </div>
-              <Play :size="16" class="text-purple-300 flex-shrink-0" />
             </div>
           </div>
         </div>
@@ -1354,19 +1370,55 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 自定义滑块样式 */
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  background: #8b5cf6;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: 2px solid #8b5cf6;
   border-radius: 50%;
   cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.1s;
 }
 
-.delay-100 {
-  animation-delay: 100ms;
+input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(1.2);
 }
-.delay-200 {
-  animation-delay: 200ms;
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: 2px solid #8b5cf6;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.1s;
+}
+
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.animate-slide-up { animation: slideUp 0.3s ease-out; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.animate-shimmer { animation: shimmer 2s infinite linear; }
+@keyframes shimmer { 
+  0% { transform: translateX(-100%); } 
+  100% { transform: translateX(100%); } 
+}
+
+.animate-music-bar-1 { animation: music-bar 0.5s ease-in-out infinite alternate; }
+.animate-music-bar-2 { animation: music-bar 0.5s ease-in-out infinite alternate 0.1s; }
+.animate-music-bar-3 { animation: music-bar 0.5s ease-in-out infinite alternate 0.2s; }
+@keyframes music-bar { 
+  from { height: 40%; } 
+  to { height: 100%; } 
 }
 </style>

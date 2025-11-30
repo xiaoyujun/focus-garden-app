@@ -367,7 +367,7 @@ function getDisplayName(filename) {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gradient-to-b from-farm-50 to-nature-50/30 pb-24">
+  <div class="min-h-screen bg-gradient-to-br from-farm-50 via-white to-nature-50 pb-24">
     <!-- 隐藏的音频元素 -->
     <audio 
       ref="audioRef"
@@ -379,15 +379,15 @@ function getDisplayName(filename) {
     />
 
     <!-- 头部 -->
-    <header class="p-4 text-center">
-      <h1 class="text-xl font-bold text-farm-900 flex items-center justify-center gap-2">
+    <header class="pt-6 pb-2 px-6 text-center relative z-10">
+      <h1 class="text-2xl font-bold text-farm-900 flex items-center justify-center gap-2 tracking-tight">
         <Headphones :size="24" class="text-nature-500" />
-        有声小说
+        <span>有声小说</span>
       </h1>
-      <p class="text-xs text-farm-400 mt-1">边做家务边听书</p>
+      <p class="text-sm text-farm-400/80 mt-1 font-medium">享受惬意的听书时光</p>
     </header>
 
-    <main class="px-4 max-w-md mx-auto">
+    <main class="px-6 max-w-md mx-auto relative z-10">
       <!-- 未选择目录时的空状态 -->
       <div v-if="!store.hasPlaylist" class="text-center py-16">
         <div class="w-24 h-24 bg-farm-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -423,174 +423,188 @@ function getDisplayName(filename) {
         </p>
       </div>
 
-      <!-- 有播放列表时 -->
+        <!-- 有播放列表时 -->
       <div v-else>
         <!-- 当前目录信息 -->
-        <div class="flex items-center justify-between mb-6">
-          <div class="flex items-center gap-2 text-sm text-farm-500 bg-white/60 px-3 py-1.5 rounded-lg">
-            <FolderOpen :size="16" />
-            <span class="truncate max-w-[200px]">{{ store.directoryName }}</span>
-            <span class="text-farm-400">({{ store.playlist.length }})</span>
+        <div class="flex items-center justify-between mb-8 bg-white/40 backdrop-blur-md p-2 rounded-2xl border border-white/50 shadow-sm">
+          <div class="flex items-center gap-2.5 text-sm text-farm-600 px-2">
+            <div class="w-8 h-8 rounded-full bg-nature-100 flex items-center justify-center text-nature-600">
+              <FolderOpen :size="16" />
+            </div>
+            <div class="flex flex-col leading-tight">
+              <span class="font-bold text-farm-800 truncate max-w-[160px]">{{ store.directoryName }}</span>
+              <span class="text-xs text-farm-400">{{ store.playlist.length }} 个音频</span>
+            </div>
           </div>
           <button
             @click="handleSelectDirectory"
-            class="text-xs text-nature-600 hover:text-nature-700 underline"
+            class="text-xs font-medium bg-white text-nature-600 px-3 py-1.5 rounded-xl shadow-sm border border-farm-100 hover:bg-nature-50 transition-colors"
           >
-            更换目录
+            更换
           </button>
         </div>
 
         <!-- 封面区域 -->
-        <div class="bg-white rounded-3xl shadow-xl shadow-farm-100 p-6 mb-6 border border-farm-100">
-          <!-- 虚拟封面 -->
-          <div class="aspect-square max-w-[280px] mx-auto bg-gradient-to-br from-nature-100 to-nature-200 rounded-2xl flex flex-col items-center justify-center mb-6 relative overflow-hidden">
-            <div class="absolute inset-0 opacity-10">
-              <div class="absolute inset-0" style="background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px);"></div>
+        <div class="relative mb-10 group">
+          <!-- 背景光晕 -->
+          <div class="absolute inset-0 bg-nature-400/20 blur-3xl rounded-full transform scale-110 opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+          
+          <div class="bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-nature-900/5 p-8 border border-white/60 relative z-10">
+            <!-- 虚拟封面 -->
+            <div class="aspect-square w-full bg-gradient-to-br from-nature-50 to-nature-100 rounded-3xl flex flex-col items-center justify-center mb-8 relative overflow-hidden shadow-inner border border-nature-50">
+              <div class="absolute inset-0 opacity-10 mix-blend-multiply">
+                <div class="absolute inset-0" style="background-image: radial-gradient(#36a778 1px, transparent 1px); background-size: 20px 20px;"></div>
+              </div>
+              
+              <div class="w-32 h-32 rounded-full bg-gradient-to-tr from-nature-400 to-nature-300 flex items-center justify-center shadow-lg shadow-nature-200/50 mb-6 animate-pulse-slow">
+                <Music2 :size="48" class="text-white drop-shadow-md" />
+              </div>
+              
+              <div class="text-center px-6 w-full z-10">
+                <h2 class="text-xl font-bold text-nature-800 line-clamp-2 leading-snug mb-2">
+                  {{ store.currentTrack ? getDisplayName(store.currentTrack.name) : '未选择' }}
+                </h2>
+                <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-nature-500/10 text-nature-600 text-xs font-medium">
+                  <span>第 {{ store.currentIndex + 1 }} 首</span>
+                  <span class="w-1 h-1 rounded-full bg-nature-400"></span>
+                  <span>共 {{ store.playlist.length }} 首</span>
+                </div>
+              </div>
+              
+              <!-- 加载指示器 -->
+              <div v-if="isLoading" class="absolute inset-0 bg-white/60 backdrop-blur-[2px] flex items-center justify-center z-20">
+                <div class="w-12 h-12 border-4 border-nature-200 border-t-nature-500 rounded-full animate-spin"></div>
+              </div>
             </div>
-            <Music2 :size="64" class="text-nature-400 mb-4" />
-            <div class="text-center px-4">
-              <p class="text-lg font-bold text-nature-700 line-clamp-2">
-                {{ store.currentTrack ? getDisplayName(store.currentTrack.name) : '未选择' }}
-              </p>
-              <p class="text-xs text-nature-500 mt-2">
-                {{ store.currentIndex + 1 }} / {{ store.playlist.length }}
-              </p>
-            </div>
-            <!-- 加载指示器 -->
-            <div v-if="isLoading" class="absolute inset-0 bg-white/80 flex items-center justify-center">
-              <div class="w-8 h-8 border-3 border-nature-200 border-t-nature-500 rounded-full animate-spin"></div>
-            </div>
-          </div>
 
-          <!-- 进度条 -->
-          <div class="mb-4">
-            <div 
-              class="relative h-2 bg-farm-100 rounded-full cursor-pointer group"
-              @mousedown="onProgressMouseDown"
-              @mousemove="onProgressMouseMove"
-              @mouseup="onProgressMouseUp"
-              @mouseleave="onProgressMouseUp"
-              @touchstart="onProgressTouchStart"
-              @touchmove="onProgressTouchMove"
-              @touchend="onProgressTouchEnd"
-            >
+            <!-- 进度条 -->
+            <div class="mb-8 px-2">
               <div 
-                class="absolute h-full bg-nature-500 rounded-full transition-all"
-                :style="{ width: displayProgress + '%' }"
-              ></div>
-              <div 
-                class="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-2 border-nature-500 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
-                :style="{ left: `calc(${displayProgress}% - 8px)` }"
-              ></div>
+                class="relative h-3 bg-farm-100/50 rounded-full cursor-pointer group/progress touch-none"
+                @mousedown="onProgressMouseDown"
+                @mousemove="onProgressMouseMove"
+                @mouseup="onProgressMouseUp"
+                @mouseleave="onProgressMouseUp"
+                @touchstart="onProgressTouchStart"
+                @touchmove="onProgressTouchMove"
+                @touchend="onProgressTouchEnd"
+              >
+                <div 
+                  class="absolute h-full bg-gradient-to-r from-nature-400 to-nature-500 rounded-full transition-all duration-100 ease-out shadow-sm"
+                  :style="{ width: displayProgress + '%' }"
+                >
+                  <div class="absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 bg-white rounded-full shadow-md border-2 border-nature-500 scale-0 group-hover/progress:scale-100 transition-transform duration-200"></div>
+                </div>
+              </div>
+              <div class="flex justify-between mt-3 text-xs text-farm-400 font-mono font-medium px-1">
+                <span>{{ store.formattedCurrentTime }}</span>
+                <span>{{ store.formattedDuration }}</span>
+              </div>
             </div>
-            <div class="flex justify-between mt-1.5 text-xs text-farm-400 font-mono">
-              <span>{{ store.formattedCurrentTime }}</span>
-              <span>{{ store.formattedDuration }}</span>
+
+            <!-- 控制按钮 -->
+            <div class="flex items-center justify-between gap-2 mb-6 px-2">
+              <!-- 快退15秒 -->
+              <button 
+                @click="rewind"
+                class="w-12 h-12 rounded-2xl text-farm-400 hover:text-farm-600 hover:bg-farm-50 transition-all flex items-center justify-center relative group"
+              >
+                <RotateCcw :size="22" />
+                <span class="absolute -bottom-1 text-[9px] font-bold opacity-60">15</span>
+              </button>
+              
+              <!-- 上一曲 -->
+              <button 
+                @click="previousTrack"
+                class="w-12 h-12 rounded-2xl text-farm-600 hover:bg-farm-50 transition-all flex items-center justify-center"
+              >
+                <SkipBack :size="26" fill="currentColor" />
+              </button>
+              
+              <!-- 播放/暂停 -->
+              <button 
+                @click="togglePlay"
+                class="w-20 h-20 rounded-[2rem] bg-gradient-to-br from-nature-400 to-nature-500 text-white flex items-center justify-center hover:shadow-xl hover:shadow-nature-200 hover:scale-105 active:scale-95 transition-all duration-300 shadow-lg shadow-nature-100"
+                :disabled="isLoading"
+              >
+                <Pause v-if="store.isPlaying" :size="36" fill="currentColor" />
+                <Play v-else :size="36" fill="currentColor" class="ml-1.5" />
+              </button>
+              
+              <!-- 下一曲 -->
+              <button 
+                @click="nextTrack"
+                class="w-12 h-12 rounded-2xl text-farm-600 hover:bg-farm-50 transition-all flex items-center justify-center"
+              >
+                <SkipForward :size="26" fill="currentColor" />
+              </button>
+              
+              <!-- 快进15秒 -->
+              <button 
+                @click="forward"
+                class="w-12 h-12 rounded-2xl text-farm-400 hover:text-farm-600 hover:bg-farm-50 transition-all flex items-center justify-center relative group"
+              >
+                <RotateCw :size="22" />
+                <span class="absolute -bottom-1 text-[9px] font-bold opacity-60">15</span>
+              </button>
             </div>
-          </div>
 
-          <!-- 控制按钮 -->
-          <div class="flex items-center justify-center gap-4 mb-4">
-            <!-- 快退15秒 -->
-            <button 
-              @click="rewind"
-              class="w-12 h-12 rounded-full bg-farm-100 text-farm-600 flex items-center justify-center hover:bg-farm-200 transition-colors relative"
-            >
-              <RotateCcw :size="20" />
-              <span class="absolute -bottom-0.5 text-[10px] font-bold">15</span>
-            </button>
-            
-            <!-- 上一曲 -->
-            <button 
-              @click="previousTrack"
-              class="w-12 h-12 rounded-full bg-farm-100 text-farm-600 flex items-center justify-center hover:bg-farm-200 transition-colors"
-            >
-              <SkipBack :size="22" fill="currentColor" />
-            </button>
-            
-            <!-- 播放/暂停 -->
-            <button 
-              @click="togglePlay"
-              class="w-16 h-16 rounded-full bg-nature-500 text-white flex items-center justify-center hover:bg-nature-600 transition-colors shadow-lg shadow-nature-200"
-              :disabled="isLoading"
-            >
-              <Pause v-if="store.isPlaying" :size="28" fill="currentColor" />
-              <Play v-else :size="28" fill="currentColor" class="ml-1" />
-            </button>
-            
-            <!-- 下一曲 -->
-            <button 
-              @click="nextTrack"
-              class="w-12 h-12 rounded-full bg-farm-100 text-farm-600 flex items-center justify-center hover:bg-farm-200 transition-colors"
-            >
-              <SkipForward :size="22" fill="currentColor" />
-            </button>
-            
-            <!-- 快进15秒 -->
-            <button 
-              @click="forward"
-              class="w-12 h-12 rounded-full bg-farm-100 text-farm-600 flex items-center justify-center hover:bg-farm-200 transition-colors relative"
-            >
-              <RotateCw :size="20" />
-              <span class="absolute -bottom-0.5 text-[10px] font-bold">15</span>
-            </button>
-          </div>
-
-          <!-- 功能按钮行 -->
-          <div class="flex items-center justify-between px-2">
-            <!-- 播放模式 -->
-            <button 
-              @click="store.togglePlayMode()"
-              class="flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-farm-50 transition-colors"
-              :class="playModeConfig.class"
-            >
-              <component :is="playModeConfig.icon" :size="18" />
-              <span class="text-xs">{{ playModeConfig.text }}</span>
-            </button>
-            
-            <!-- 播放速度 -->
-            <button 
-              @click="changePlaybackRate"
-              class="flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-farm-50 transition-colors text-farm-600"
-            >
-              <Gauge :size="18" />
-              <span class="text-xs font-mono font-bold">{{ store.playbackRate }}x</span>
-            </button>
-            
-            <!-- 播放列表 -->
-            <button 
-              @click="showPlaylist = true"
-              class="flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-farm-50 transition-colors text-farm-600"
-            >
-              <List :size="18" />
-              <span class="text-xs">列表</span>
-            </button>
+            <!-- 功能按钮行 -->
+            <div class="flex items-center justify-between px-2 pt-6 border-t border-farm-50">
+              <!-- 播放模式 -->
+              <button 
+                @click="store.togglePlayMode()"
+                class="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-farm-50 transition-colors w-16"
+                :class="playModeConfig.class"
+              >
+                <component :is="playModeConfig.icon" :size="20" />
+                <span class="text-[10px] font-medium">{{ playModeConfig.text }}</span>
+              </button>
+              
+              <!-- 播放速度 -->
+              <button 
+                @click="changePlaybackRate"
+                class="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-farm-50 transition-colors text-farm-600 w-16"
+              >
+                <div class="relative">
+                  <Gauge :size="20" />
+                  <span class="absolute -right-1 -top-1 w-2 h-2 bg-nature-500 rounded-full" v-if="store.playbackRate !== 1"></span>
+                </div>
+                <span class="text-[10px] font-mono font-bold">{{ store.playbackRate }}x</span>
+              </button>
+              
+              <!-- 播放列表 -->
+              <button 
+                @click="showPlaylist = true"
+                class="flex flex-col items-center gap-1 px-3 py-2 rounded-xl hover:bg-farm-50 transition-colors text-farm-600 w-16"
+              >
+                <List :size="20" />
+                <span class="text-[10px] font-medium">列表</span>
+              </button>
+            </div>
           </div>
         </div>
 
         <!-- 音量控制 -->
-        <div class="bg-white/60 rounded-2xl p-4 flex items-center gap-3">
-          <button @click="toggleMute" class="text-farm-500 hover:text-farm-700">
-            <VolumeX v-if="store.volume === 0" :size="20" />
-            <Volume2 v-else :size="20" />
+        <div class="bg-white/60 backdrop-blur-md rounded-2xl p-4 flex items-center gap-4 border border-white/50 shadow-sm">
+          <button @click="toggleMute" class="text-farm-400 hover:text-farm-600 transition-colors">
+            <VolumeX v-if="store.volume === 0" :size="22" />
+            <Volume2 v-else :size="22" />
           </button>
-          <input 
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            :value="store.volume"
-            @input="onVolumeChange"
-            class="flex-1 h-2 bg-farm-200 rounded-full appearance-none cursor-pointer accent-nature-500"
-          />
-          <span class="text-xs text-farm-500 font-mono w-10 text-right">
+          <div class="flex-1 relative h-10 flex items-center group">
+            <input 
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              :value="store.volume"
+              @input="onVolumeChange"
+              class="w-full h-1.5 bg-farm-200 rounded-full appearance-none cursor-pointer accent-nature-500 focus:outline-none focus:ring-2 focus:ring-nature-200 focus:ring-offset-2"
+            />
+          </div>
+          <span class="text-xs text-farm-500 font-mono font-bold w-10 text-right">
             {{ Math.round(store.volume * 100) }}%
           </span>
-        </div>
-
-        <!-- 快捷键提示 -->
-        <div class="text-center mt-6 text-xs text-farm-400">
-          <p>快捷键: 空格播放/暂停 | ← → 快退/快进 | ↑ ↓ 音量</p>
         </div>
       </div>
     </main>
@@ -598,49 +612,58 @@ function getDisplayName(filename) {
     <!-- 播放列表弹窗 -->
     <div 
       v-if="showPlaylist" 
-      class="fixed inset-0 bg-farm-900/50 backdrop-blur-sm z-50 flex items-end"
+      class="fixed inset-0 bg-farm-900/20 backdrop-blur-sm z-50 flex items-end"
       @click.self="showPlaylist = false"
     >
-      <div class="bg-white w-full max-h-[70vh] rounded-t-3xl overflow-hidden animate-slide-up">
+      <div class="bg-white/95 backdrop-blur-xl w-full max-h-[70vh] rounded-t-[2rem] overflow-hidden animate-slide-up shadow-2xl shadow-farm-900/20 border-t border-white/50">
         <!-- 头部 -->
-        <div class="flex items-center justify-between p-4 border-b border-farm-100 sticky top-0 bg-white z-10">
-          <h3 class="font-bold text-farm-800">播放列表 ({{ store.playlist.length }})</h3>
+        <div class="flex items-center justify-between p-6 border-b border-farm-100 sticky top-0 bg-white/95 backdrop-blur-md z-10">
+          <h3 class="font-bold text-lg text-farm-800 flex items-center gap-2">
+            <List :size="20" class="text-nature-500" />
+            播放列表 <span class="text-sm font-normal text-farm-400">({{ store.playlist.length }})</span>
+          </h3>
           <button 
             @click="showPlaylist = false"
-            class="w-8 h-8 rounded-full bg-farm-100 flex items-center justify-center text-farm-500 hover:bg-farm-200"
+            class="w-8 h-8 rounded-full bg-farm-50 flex items-center justify-center text-farm-400 hover:bg-farm-100 hover:text-farm-600 transition-colors"
           >
-            <X :size="18" />
+            <X :size="20" />
           </button>
         </div>
         
         <!-- 列表 -->
-        <div class="overflow-y-auto max-h-[calc(70vh-60px)]">
+        <div class="overflow-y-auto max-h-[calc(70vh-80px)] p-2">
           <div 
             v-for="(track, index) in store.playlist" 
             :key="track.name"
             @click="playTrack(index)"
-            class="flex items-center gap-3 px-4 py-3 hover:bg-farm-50 cursor-pointer transition-colors border-b border-farm-50"
-            :class="{ 'bg-nature-50': index === store.currentIndex }"
+            class="flex items-center gap-4 px-4 py-3.5 rounded-2xl cursor-pointer transition-all group mb-1"
+            :class="index === store.currentIndex ? 'bg-gradient-to-r from-nature-50 to-transparent' : 'hover:bg-farm-50'"
           >
-            <div class="w-8 h-8 rounded-lg bg-farm-100 flex items-center justify-center text-farm-400 flex-shrink-0">
-              <span v-if="index === store.currentIndex && store.isPlaying" class="flex gap-0.5">
-                <span class="w-1 h-3 bg-nature-500 rounded-full animate-music-bar-1"></span>
-                <span class="w-1 h-3 bg-nature-500 rounded-full animate-music-bar-2"></span>
-                <span class="w-1 h-3 bg-nature-500 rounded-full animate-music-bar-3"></span>
+            <div 
+              class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors"
+              :class="index === store.currentIndex ? 'bg-nature-100 text-nature-600' : 'bg-farm-50 text-farm-400 group-hover:bg-farm-100 group-hover:text-farm-500'"
+            >
+              <span v-if="index === store.currentIndex && store.isPlaying" class="flex gap-0.5 items-end h-4">
+                <span class="w-1 bg-nature-500 rounded-full animate-music-bar-1"></span>
+                <span class="w-1 bg-nature-500 rounded-full animate-music-bar-2"></span>
+                <span class="w-1 bg-nature-500 rounded-full animate-music-bar-3"></span>
               </span>
-              <span v-else class="text-xs font-mono">{{ index + 1 }}</span>
+              <span v-else class="text-sm font-mono font-medium">{{ index + 1 }}</span>
             </div>
             <div class="flex-1 min-w-0">
               <p 
-                class="text-sm truncate"
-                :class="index === store.currentIndex ? 'text-nature-600 font-medium' : 'text-farm-700'"
+                class="text-base truncate font-medium transition-colors"
+                :class="index === store.currentIndex ? 'text-nature-700' : 'text-farm-700'"
               >
                 {{ getDisplayName(track.name) }}
               </p>
-              <p v-if="store.progressMemory[track.name]" class="text-xs text-farm-400 flex items-center gap-1 mt-0.5">
-                <Clock :size="10" />
+              <p v-if="store.progressMemory[track.name]" class="text-xs text-farm-400 flex items-center gap-1 mt-1">
+                <Clock :size="12" />
                 上次播放至 {{ store.formatTime(store.progressMemory[track.name].time) }}
               </p>
+            </div>
+            <div v-if="index === store.currentIndex" class="text-nature-500">
+               <Play :size="18" fill="currentColor" />
             </div>
           </div>
         </div>
@@ -661,20 +684,28 @@ input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 16px;
   height: 16px;
-  background: #36a778;
+  background: #fff;
+  border: 2px solid #36a778;
   border-radius: 50%;
   cursor: pointer;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.1s;
+}
+
+input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(1.2);
 }
 
 input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
-  background: #36a778;
+  background: #fff;
+  border: 2px solid #36a778;
   border-radius: 50%;
   cursor: pointer;
   border: none;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.1s;
 }
 
 /* 弹窗动画 */
@@ -708,6 +739,19 @@ input[type="range"]::-moz-range-thumb {
   }
   to {
     height: 12px;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
   }
 }
 </style>
