@@ -136,6 +136,11 @@ function refreshLoginStatus() {
 function onLoginSuccess() {
   refreshLoginStatus()
   searchError.value = ''
+  recommendError.value = ''
+  // 登录成功后加载推荐视频
+  if (isLoggedIn.value && activeTab.value === 'recommend') {
+    loadRecommendVideos()
+  }
 }
 
 // ===== 从 store 获取的计算属性 =====
@@ -593,8 +598,13 @@ function switchToBiliHistory() {
 
 // ===== 推荐视频相关 =====
 
-// 加载首页推荐
+// 加载首页推荐（需要登录）
 async function loadRecommendVideos(refresh = false) {
+  if (!isLoggedIn.value) {
+    recommendError.value = '请先登录B站账号'
+    return
+  }
+  
   if (isRecommendLoading.value) return
   
   isRecommendLoading.value = true
@@ -623,8 +633,13 @@ async function loadRecommendVideos(refresh = false) {
   }
 }
 
-// 加载热门视频
+// 加载热门视频（需要登录）
 async function loadPopularVideos(loadMore = false) {
+  if (!isLoggedIn.value) {
+    recommendError.value = '请先登录B站账号'
+    return
+  }
+  
   if (isPopularLoading.value) return
   
   isPopularLoading.value = true
@@ -827,8 +842,10 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyboard)
   // 初始化登录状态
   refreshLoginStatus()
-  // 加载推荐视频
-  loadRecommendVideos()
+  // 已登录时加载推荐视频
+  if (isLoggedIn.value) {
+    loadRecommendVideos()
+  }
 })
 
 onUnmounted(() => {
@@ -1061,33 +1078,49 @@ onUnmounted(() => {
 
       <!-- 推荐内容 -->
       <div v-if="activeTab === 'recommend'" class="space-y-4">
-        <!-- 推荐/热门切换 -->
-        <div class="flex gap-2 mb-4">
+        <!-- 未登录提示 -->
+        <div v-if="!isLoggedIn" class="text-center py-16">
+          <div class="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Home :size="32" class="text-pink-300" />
+          </div>
+          <p class="text-gray-600 font-medium mb-2">登录后查看个性化推荐</p>
+          <p class="text-gray-400 text-sm mb-6">登录B站账号，获取推荐视频和更高音质</p>
           <button 
-            @click="switchRecommendMode('recommend')"
-            class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all"
-            :class="recommendMode === 'recommend' ? 'bg-pink-500 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-50'"
+            @click="showLoginModal = true"
+            class="px-6 py-2.5 bg-pink-500 text-white rounded-xl text-sm font-bold hover:bg-pink-600 shadow-md shadow-pink-200 transition-all"
           >
-            <Home :size="16" />
-            为你推荐
-          </button>
-          <button 
-            @click="switchRecommendMode('popular')"
-            class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all"
-            :class="recommendMode === 'popular' ? 'bg-pink-500 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-50'"
-          >
-            <Flame :size="16" />
-            热门视频
-          </button>
-          <button 
-            @click="recommendMode === 'recommend' ? loadRecommendVideos(true) : loadPopularVideos()"
-            :disabled="isRecommendLoading || isPopularLoading"
-            class="ml-auto p-2 rounded-xl text-gray-400 hover:text-pink-500 hover:bg-pink-50 transition-colors disabled:opacity-50"
-            title="刷新"
-          >
-            <RefreshCw :size="18" :class="{ 'animate-spin': isRecommendLoading || isPopularLoading }" />
+            登录B站
           </button>
         </div>
+
+        <!-- 已登录：推荐/热门切换 -->
+        <template v-else>
+          <div class="flex gap-2 mb-4">
+            <button 
+              @click="switchRecommendMode('recommend')"
+              class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+              :class="recommendMode === 'recommend' ? 'bg-pink-500 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-50'"
+            >
+              <Home :size="16" />
+              为你推荐
+            </button>
+            <button 
+              @click="switchRecommendMode('popular')"
+              class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+              :class="recommendMode === 'popular' ? 'bg-pink-500 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-50'"
+            >
+              <Flame :size="16" />
+              热门视频
+            </button>
+            <button 
+              @click="recommendMode === 'recommend' ? loadRecommendVideos(true) : loadPopularVideos()"
+              :disabled="isRecommendLoading || isPopularLoading"
+              class="ml-auto p-2 rounded-xl text-gray-400 hover:text-pink-500 hover:bg-pink-50 transition-colors disabled:opacity-50"
+              title="刷新"
+            >
+              <RefreshCw :size="18" :class="{ 'animate-spin': isRecommendLoading || isPopularLoading }" />
+            </button>
+          </div>
 
         <!-- 推荐视频列表 -->
         <template v-if="recommendMode === 'recommend'">
@@ -1281,6 +1314,7 @@ onUnmounted(() => {
               <span v-else>加载更多</span>
             </button>
           </div>
+        </template>
         </template>
       </div>
 
