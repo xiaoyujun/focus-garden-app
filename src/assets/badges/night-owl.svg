@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="bgNight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60a5fa"/>
+      <stop offset="100%" style="stop-color:#1e40af"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="45" fill="url(#bgNight)" stroke="#172554" stroke-width="3"/>
+  
+  <!-- 月亮 -->
+  <path d="M60 30 A 20 20 0 1 1 45 65 A 16 16 0 1 0 60 30 Z" fill="#fef9c3"/>
+  
+  <!-- 星星 -->
+  <g fill="#fff">
+    <circle cx="30" cy="35" r="2"/>
+    <circle cx="70" cy="45" r="1.5"/>
+    <circle cx="40" cy="70" r="1"/>
+    <path d="M75 25 L77 29 L81 29 L78 32 L79 36 L75 33 L71 36 L72 32 L69 29 L73 29 Z" transform="scale(0.6) translate(50, 20)"/>
+  </g>
+</svg>

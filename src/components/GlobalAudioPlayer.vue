@@ -8,10 +8,64 @@ import { useRoute, useRouter } from 'vue-router'
 import { useOnlineAudioStore } from '../stores/onlineAudioStore'
 import { getAudioUrls } from '../services/bilibiliService'
 import { Play, Pause, SkipForward, X, ChevronUp } from 'lucide-vue-next'
-import { Capacitor } from '@capacitor/core'
+import { Capacitor, CapacitorHttp } from '@capacitor/core'
 
 // 平台判断
 const isNative = Capacitor.isNativePlatform()
+
+// 存储 Blob URL 以便后续释放
+let currentBlobUrl = null
+
+/**
+ * 原生端通过 CapacitorHttp 获取音频并转为 Blob URL
+ * 这样可以设置正确的 Referer 头绕过B站防盗链
+ */
+async function fetchAudioAsBlobUrl(url) {
+  try {
+    // 释放之前的 Blob URL
+    if (currentBlobUrl) {
+      URL.revokeObjectURL(currentBlobUrl)
+      currentBlobUrl = null
+    }
+    
+    const response = await CapacitorHttp.get({
+      url,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.bilibili.com/',
+        'Origin': 'https://www.bilibili.com'
+      },
+      responseType: 'blob'
+    })
+    
+    // CapacitorHttp 返回 base64 编码的数据
+    if (response.data) {
+      let blob
+      if (typeof response.data === 'string') {
+        // base64 字符串转 Blob
+        const byteCharacters = atob(response.data)
+        const byteNumbers = new Array(byteCharacters.length)
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i)
+        }
+        const byteArray = new Uint8Array(byteNumbers)
+        blob = new Blob([byteArray], { type: 'audio/mp4' })
+      } else if (response.data instanceof Blob) {
+        blob = response.data
+      } else {
+        throw new Error('未知的响应格式')
+      }
+      
+      currentBlobUrl = URL.createObjectURL(blob)
+      return currentBlobUrl
+    }
+    
+    throw new Error('无法获取音频数据')
+  } catch (error) {
+    console.error('fetchAudioAsBlobUrl 失败:', error)
+    throw error
+  }
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -35,6 +89,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   store.saveProgress(true)
+  // 释放 Blob URL
+  if (currentBlobUrl) {
+    URL.revokeObjectURL(currentBlobUrl)
+    currentBlobUrl = null
+  }
 })
 
 // 监听播放索引变化，自动加载新曲目
@@ -116,14 +175,33 @@ async function loadAndPlayTrack(index) {
 }
 
 // 尝试使用URL播放
-function tryPlayUrl(url, track, version) {
-  return new Promise((resolve, reject) => {
-    if (!audioRef.value || version !== loadVersion) {
-      reject(new Error('已取消'))
-      return
+async function tryPlayUrl(url, track, version) {
+  if (!audioRef.value || version !== loadVersion) {
+    throw new Error('已取消')
+  }
+  
+  const audio = audioRef.value
+  
+  // 原生端需要通过 CapacitorHttp 获取音频数据（带 Referer 绕过防盗链）
+  // Web 端通过代理服务器访问
+  let finalUrl
+  if (isNative) {
+    try {
+      finalUrl = await fetchAudioAsBlobUrl(url)
+    } catch (e) {
+      console.warn('原生端获取音频失败，尝试直连:', e.message)
+      finalUrl = url // fallback
     }
-    
-    const audio = audioRef.value
+  } else {
+    finalUrl = `/api/bili-proxy?url=${encodeURIComponent(url)}`
+  }
+  
+  // 检查是否已取消
+  if (version !== loadVersion) {
+    throw new Error('已取消')
+  }
+  
+  return new Promise((resolve, reject) => {
     // 登录用户使用官方 API，响应通常较快，8秒超时足够
     const timeout = setTimeout(() => reject(new Error('超时')), 8000)
     
@@ -164,8 +242,6 @@ function tryPlayUrl(url, track, version) {
     audio.addEventListener('canplay', onCanPlay, { once: true })
     audio.addEventListener('error', onError, { once: true })
     
-    // Web 端需要通过代理访问 B 站音频（绕过 CORS 和防盗链）
-    const finalUrl = isNative ? url : `/api/bili-proxy?url=${encodeURIComponent(url)}`
     audio.src = finalUrl
     audio.volume = store.volume
     audio.playbackRate = store.playbackRate

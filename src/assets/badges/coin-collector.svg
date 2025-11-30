@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="bgCoin" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fcd34d"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="45" fill="url(#bgCoin)" stroke="#b45309" stroke-width="3"/>
+  
+  <!-- 钱袋 -->
+  <path d="M35 40 Q30 75 50 80 Q70 75 65 40 Q63 30 50 25 Q37 30 35 40" fill="#fff6"/>
+  
+  <!-- 大金币 -->
+  <circle cx="50" cy="50" r="18" fill="#fbbf24" stroke="#b45309" stroke-width="2"/>
+  <text x="50" y="58" text-anchor="middle" font-size="24" font-weight="bold" fill="#b45309">$</text>
+  
+  <!-- 闪光 -->
+  <path d="M65 25 L68 30 L65 35 L62 30 Z" fill="#fff"/>
+</svg>

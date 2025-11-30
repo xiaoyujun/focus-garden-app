@@ -12,6 +12,7 @@ import Settings from './views/Settings.vue'
 import AudioPlayer from './views/AudioPlayer.vue'
 import OnlinePlayer from './views/OnlinePlayer.vue'
 import DownloadManager from './views/DownloadManager.vue'
+import BadgeShop from './views/BadgeShop.vue'
 
 const routes = [
   { path: '/', component: Garden },
@@ -34,6 +35,11 @@ const routes = [
     path: '/download',
     component: DownloadManager,
     name: 'DownloadManager'
+  },
+  {
+    path: '/badges',
+    component: BadgeShop,
+    name: 'BadgeShop'
   },
 ]
 

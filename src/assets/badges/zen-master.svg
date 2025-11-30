@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="bgZen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#d8b4fe"/>
+      <stop offset="100%" style="stop-color:#9333ea"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="45" fill="url(#bgZen)" stroke="#7e22ce" stroke-width="3"/>
+  
+  <!-- 莲花 -->
+  <path d="M50 25 Q60 45 50 65 Q40 45 50 25" fill="#fff"/>
+  <path d="M50 65 Q70 55 75 40 Q70 60 50 65" fill="#f3e8ff"/>
+  <path d="M50 65 Q30 55 25 40 Q30 60 50 65" fill="#f3e8ff"/>
+  
+  <!-- 涟漪 -->
+  <ellipse cx="50" cy="70" rx="25" ry="5" fill="none" stroke="#fff" stroke-width="1.5" opacity="0.6"/>
+</svg>

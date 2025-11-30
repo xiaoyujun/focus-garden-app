@@ -1,9 +1,13 @@
 <script setup>
 import { useAppStore } from '../stores/gameStore'
+import { useBadgeStore } from '../stores/badgeStore'
 import { computed, ref } from 'vue'
-import { Flower2, Timer, Coins, X, Star, ShoppingBag, Filter, ArrowUpDown, CheckSquare, Square, Trash2, Trophy, Sparkles } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { Flower2, Timer, Coins, X, Star, ShoppingBag, Filter, ArrowUpDown, CheckSquare, Square, Trash2, Trophy, Sparkles, Award } from 'lucide-vue-next'
 
+const router = useRouter()
 const store = useAppStore()
+const badgeStore = useBadgeStore()
 const selectedCrop = ref(null)
 
 // 筛选和排序状态
@@ -177,6 +181,14 @@ const selectedTotalPrice = computed(() => {
           我的花园
         </h1>
         <div class="flex items-center space-x-2">
+          <!-- 徽章商店入口 -->
+          <button 
+            @click="router.push('/badges')"
+            class="flex items-center bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200 shadow-sm hover:bg-amber-100 transition-colors"
+          >
+            <Award class="text-amber-600 mr-1" :size="16" />
+            <span class="text-xs font-medium text-amber-700">{{ badgeStore.stats.owned }}/{{ badgeStore.stats.total }}</span>
+          </button>
           <div class="flex items-center bg-yellow-50 px-3 py-1.5 rounded-full border border-yellow-100 shadow-sm">
             <Coins class="text-yellow-600 mr-1.5" :size="16" />
             <span class="text-sm font-bold text-yellow-700">{{ store.coins }}</span>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="bgSquirt" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7dd3fc"/>
+      <stop offset="100%" style="stop-color:#0284c7"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 蓝色背景 -->
+  <circle cx="50" cy="50" r="45" fill="url(#bgSquirt)" stroke="#0369a1" stroke-width="3"/>
+  
+  <!-- 墨镜 (Squad Style) -->
+  <path d="M30 45 L45 50 L45 40 L30 35 Z" fill="#1f2937"/>
+  <path d="M70 45 L55 50 L55 40 L70 35 Z" fill="#1f2937"/>
+  <path d="M45 45 L55 45" stroke="#1f2937" stroke-width="2"/>
+  
+  <!-- 水滴/泡沫 -->
+  <circle cx="30" cy="65" r="5" fill="#bae6fd" stroke="#fff" stroke-width="1"/>
+  <circle cx="70" cy="65" r="5" fill="#bae6fd" stroke="#fff" stroke-width="1"/>
+  <circle cx="50" cy="75" r="8" fill="#bae6fd" stroke="#fff" stroke-width="1"/>
+  
+  <!-- 龟壳纹路背景 (隐约) -->
+  <path d="M50 20 L70 35 L70 65 L50 80 L30 65 L30 35 Z" fill="none" stroke="#fff" stroke-width="2" opacity="0.3"/>
+</svg>
