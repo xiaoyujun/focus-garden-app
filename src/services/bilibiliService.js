@@ -56,7 +56,9 @@ function ensureLogin() {
 
 function normalizeCover(url) {
   if (!url) return ''
-  return url.startsWith('//') ? `https:${url}` : url
+  if (url.startsWith('//')) return `https:${url}`
+  if (url.startsWith('http://')) return url.replace(/^http:/, 'https:')
+  return url
 }
 
 function getCache(key) {
@@ -228,7 +230,7 @@ export async function getVideoInfo(bvid) {
   return {
     title: info.title,
     desc: info.desc,
-    cover: info.pic,
+    cover: normalizeCover(info.pic),
     duration: info.duration,
     owner: info.owner,
     cid: info.cid,
@@ -438,7 +440,7 @@ export async function getUploaderVideos(mid, page = 1, pageSize = 30) {
         bvid: v.bvid,
         aid: v.aid,
         title: v.title,
-        cover: v.pic,
+        cover: normalizeCover(v.pic),
         duration: v.length,
         created: v.created,
         play: v.play,
@@ -575,7 +577,7 @@ export async function getFavoriteList(mid = null) {
         fid: f.fid,
         mid: f.mid,
         title: f.title,
-        cover: f.cover,
+        cover: normalizeCover(f.cover),
         mediaCount: f.media_count,
         ctime: f.ctime,
         mtime: f.mtime
@@ -617,7 +619,7 @@ export async function getFavoriteContent(mediaId, page = 1, pageSize = 20) {
       info: {
         id: info.id,
         title: info.title,
-        cover: info.cover,
+        cover: normalizeCover(info.cover),
         mediaCount: info.media_count
       },
       hasMore: data.data?.has_more || false,
@@ -627,7 +629,7 @@ export async function getFavoriteContent(mediaId, page = 1, pageSize = 20) {
         bvid: m.bvid,
         aid: m.id,
         title: m.title,
-        cover: m.cover,
+        cover: normalizeCover(m.cover),
         duration: m.duration,
         author: m.upper?.name || '',
         mid: m.upper?.mid || 0,
@@ -678,7 +680,7 @@ export async function getHistory(max = 0, viewAt = 0, pageSize = 20) {
           bvid: h.history?.bvid || '',
           cid: h.history?.cid || 0,
           title: h.title || '',
-          cover: h.cover || '',
+          cover: normalizeCover(h.cover || ''),
           duration: h.duration || 0,
           progress: h.progress || 0,
           author: h.author_name || '',
@@ -728,7 +730,7 @@ export async function getUploaderInfo(mid) {
     return {
       mid: info.mid,
       name: info.name,
-      face: info.face,
+      face: normalizeCover(info.face),
       sign: info.sign,
       level: info.level,
       official: {

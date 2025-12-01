@@ -295,8 +295,10 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
   }
 
   // 清除播放
-  function clearPlayback() {
-    saveProgress(true)
+  function clearPlayback(shouldSave = true) {
+    if (shouldSave) {
+      saveProgress(true)
+    }
     if (audioElement.value) {
       audioElement.value.pause()
       audioElement.value.removeAttribute('src')
@@ -309,6 +311,18 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
     currentTime.value = 0
     duration.value = 0
     error.value = ''
+  }
+
+  function clearCache() {
+    try {
+      clearPlayback(false)
+      progressMap.value = {}
+      lastProgressSave = 0
+      localStorage.removeItem(STORAGE_KEY)
+      localStorage.removeItem(PROGRESS_STORAGE_KEY)
+    } catch (e) {
+      console.error('清空音频缓存失败:', e)
+    }
   }
 
   // 初始化
@@ -357,6 +371,7 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
     clearTrackProgress,
     updateMediaSession,
     clearPlayback,
+    clearCache,
     formatTime
   }
 })

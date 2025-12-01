@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <radialGradient id="ballShine" cx="30%" cy="30%" r="60%">
+      <stop offset="0%" style="stop-color:#fff;stop-opacity:0.4"/>
+      <stop offset="100%" style="stop-color:#fff;stop-opacity:0"/>
+    </radialGradient>
+  </defs>
+  <!-- 上半黑球 -->
+  <path d="M50 5 A 45 45 0 0 1 95 50 L 5 50 A 45 45 0 0 1 50 5 Z" fill="#374151"/>
+  <!-- 黄色U型 -->
+  <path d="M20 30 Q 50 60 80 30 L 70 25 Q 50 45 30 25 Z" fill="#eab308"/>
+  <!-- 下半白球 -->
+  <path d="M50 95 A 45 45 0 0 1 5 50 L 95 50 A 45 45 0 0 1 50 95 Z" fill="#f9fafb"/>
+  <!-- 中间黑带 -->
+  <rect x="5" y="46" width="90" height="8" fill="#1f2937"/>
+  <!-- 中间按钮 -->
+  <circle cx="50" cy="50" r="14" fill="#1f2937"/>
+  <circle cx="50" cy="50" r="9" fill="#fff"/>
+  <!-- 高光 -->
+  <path d="M50 5 A 45 45 0 0 1 95 50 L 5 50 A 45 45 0 0 1 50 5 Z" fill="url(#ballShine)" opacity="0.6"/>
+</svg>

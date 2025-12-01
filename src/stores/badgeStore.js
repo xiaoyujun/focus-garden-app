@@ -198,7 +198,8 @@ const CATEGORY_CONFIG = {
   economy: { name: '经济系列', icon: '💰' },
   collection: { name: '收藏系列', icon: '⭐' },
   special: { name: '特别系列', icon: '✨' },
-  pokemon: { name: '精灵系列', icon: '🐱' }
+  pokemon: { name: '精灵系列', icon: '🐱' },
+  game: { name: '游戏系列', icon: '🎮' }
 }
 
 const STORAGE_KEY = 'focus-garden-badges'

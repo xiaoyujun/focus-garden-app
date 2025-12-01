@@ -40,6 +40,13 @@ function getMainApiUrl(path) {
   return `/api/bili${path}`
 }
 
+function normalizeAvatar(url) {
+  if (!url) return ''
+  if (url.startsWith('//')) return `https:${url}`
+  if (url.startsWith('http://')) return url.replace(/^http:/, 'https:')
+  return url
+}
+
 /**
  * 从本地存储加载认证信息
  */
@@ -250,7 +257,7 @@ async function saveLoginInfo(cookies, loginData) {
     if (userInfo) {
       authInfo.userId = userInfo.mid
       authInfo.userName = userInfo.uname
-      authInfo.avatar = userInfo.face
+      authInfo.avatar = normalizeAvatar(userInfo.face)
     }
   } catch (e) {
     console.warn('获取用户信息失败:', e)
@@ -316,7 +323,7 @@ export async function loginWithCookies(cookieString) {
     authInfo.isLoggedIn = true
     authInfo.userId = userInfo.mid
     authInfo.userName = userInfo.uname
-    authInfo.avatar = userInfo.face
+    authInfo.avatar = normalizeAvatar(userInfo.face)
     
     // 设置过期时间
     const expiresAt = new Date()
@@ -345,7 +352,7 @@ export async function refreshAuthStatus() {
     authInfo.isLoggedIn = true
     authInfo.userId = userInfo.mid
     authInfo.userName = userInfo.uname
-    authInfo.avatar = userInfo.face
+    authInfo.avatar = normalizeAvatar(userInfo.face)
     saveAuthToStorage()
     return true
   } else {

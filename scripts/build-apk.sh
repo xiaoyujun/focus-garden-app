@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 export ANDROID_HOME=$HOME/android-sdk
 export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
 
@@ -25,11 +25,11 @@ npx cap sync android
 echo "=== Building APK ==="
 cd android
 chmod +x gradlew
-./gradlew assembleRelease --no-daemon
+./gradlew assembleDebug --no-daemon
 
 echo "=== Build complete ==="
 VERSION=$(node -p "require('../package.json').version")
-APK_PATH=$(find . -name "*.apk" -path "*/release/*" | head -1)
+APK_PATH=$(find . -name "*.apk" -path "*/debug/*" | head -1)
 echo "APK location: $APK_PATH"
 
 # Copy to APK folder

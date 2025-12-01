@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
 import { useSourceStore } from '../stores/sourceStore'
 import { useOnlineAudioStore } from '../stores/onlineAudioStore'
 import { 
@@ -59,10 +59,23 @@ const recommendMode = ref('recommend') // recommend | popular
 
 // 下载相关状态
 const isDownloading = ref(null)        // 正在下载的视频bvid
+const batchDownloadState = reactive({
+  running: false,
+  total: 0,
+  finished: 0,
+  failed: 0
+})
+const batchDownloadMessage = ref('')
+const batchDownloadError = ref('')
 
 // 多P视频解析结果
 const parsedVideo = ref(null)          // 解析到的多P视频详情
 const showParsedPages = ref(false)     // 是否展开分P列表
+
+// 缓存清理
+const cacheClearing = ref(false)
+const cacheMessage = ref('')
+const cacheError = ref('')
 
 // 搜索筛选状态
 const showSearchFilter = ref(false)
@@ -123,6 +136,7 @@ const historyError = ref('')
 
 // 判断是否是原生平台
 const isNativePlatform = Capacitor.isNativePlatform()
+const AUDIO_CACHE_DIR = 'FocusGarden/BilibiliAudio'
 
 // 刷新登录状态
 function refreshLoginStatus() {
@@ -350,6 +364,38 @@ function resetFilter() {
     type: 'all',
     duration: 'all',
     order: 'default'
+  }
+}
+
+async function clearAudioCache() {
+  if (cacheClearing.value) return
+  cacheMessage.value = ''
+  cacheError.value = ''
+  const confirmed = window.confirm('确定清空音频缓存吗？这会移除已保存的播放进度，并清理已下载的音频文件。')
+  if (!confirmed) return
+
+  cacheClearing.value = true
+  try {
+    audioStore.clearCache()
+
+    if (isNativePlatform) {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem')
+      try {
+        await Filesystem.rmdir({
+          path: AUDIO_CACHE_DIR,
+          directory: Directory.Documents,
+          recursive: true
+        })
+      } catch (e) {
+        console.warn('清除本地音频缓存目录时跳过:', e.message || e)
+      }
+    }
+
+    cacheMessage.value = '音频缓存已清空'
+  } catch (e) {
+    cacheError.value = e.message || '清空失败，请稍后重试'
+  } finally {
+    cacheClearing.value = false
   }
 }
 
@@ -768,6 +814,103 @@ function switchToRecommend() {
   }
 }
 
+function sanitizeFileName(name = '') {
+  return (name || 'audio')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+}
+
+function buildAudioFolder(subFolder = '') {
+  const safe = sanitizeFileName(subFolder)
+  return safe ? `${AUDIO_CACHE_DIR}/${safe}` : AUDIO_CACHE_DIR
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const result = reader.result || ''
+      resolve(typeof result === 'string' ? result.split(',')[1] || '' : '')
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function downloadAudioNative(audioUrl, fileName, subFolder = '') {
+  const { Filesystem, Directory } = await import('@capacitor/filesystem')
+  const { CapacitorHttp } = await import('@capacitor/core')
+  const targetDir = buildAudioFolder(subFolder)
+
+  try {
+    await Filesystem.mkdir({
+      path: targetDir,
+      directory: Directory.Documents,
+      recursive: true
+    })
+  } catch (e) {
+    // 目录可能已存在
+  }
+
+  const response = await CapacitorHttp.get({
+    url: audioUrl,
+    responseType: 'blob',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
+      'Referer': 'https://www.bilibili.com/',
+      'Origin': 'https://www.bilibili.com'
+    }
+  })
+
+  if (response.status !== 200) {
+    throw new Error(`下载失败: HTTP ${response.status}`)
+  }
+
+  let data = response.data
+  if (data instanceof Blob) {
+    data = await blobToBase64(data)
+  } else if (typeof data === 'object') {
+    data = await blobToBase64(new Blob([response.data]))
+  } else if (typeof data === 'string' && data.includes(',')) {
+    data = data.split(',')[1]
+  }
+
+  await Filesystem.writeFile({
+    path: `${targetDir}/${fileName}`,
+    data,
+    directory: Directory.Documents
+  })
+}
+
+async function downloadAudioWeb(audioUrl, fileName) {
+  const proxyUrl = `/api/bili-proxy?url=${encodeURIComponent(audioUrl)}`
+  const response = await fetch(proxyUrl)
+
+  if (!response.ok) {
+    throw new Error(`下载失败: HTTP ${response.status}`)
+  }
+
+  const blob = await response.blob()
+  const downloadUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = downloadUrl
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(downloadUrl)
+}
+
+async function downloadAudioFile(audioUrl, fileName, subFolder = '') {
+  const safeName = sanitizeFileName(fileName || 'audio.m4a') || 'audio.m4a'
+  if (isNativePlatform) {
+    return downloadAudioNative(audioUrl, safeName, subFolder)
+  }
+  return downloadAudioWeb(audioUrl, safeName)
+}
+
 // ===== 视频操作菜单 =====
 
 // 切换视频菜单
@@ -799,82 +942,65 @@ async function downloadVideo(item) {
   closeVideoMenu()
   
   try {
-    // 获取视频详情
-    const videoInfo = await getVideoInfo(item.bvid)
-    const cid = videoInfo.cid
+    let cid = item.cid
+    let title = item.title || item.bvid
+
+    if (!cid) {
+      const videoInfo = await getVideoInfo(item.bvid)
+      cid = videoInfo.cid
+      title = videoInfo.title || title
+    }
     
-    // 获取音频URL
     const audioUrl = await getBestAudioUrl(item.bvid, cid)
     
     if (!audioUrl) {
       throw new Error('无法获取音频地址')
     }
     
-    // 创建下载链接
-    const fileName = `${item.title.replace(/[\\/:*?"<>|]/g, '_')}.m4a`
-    
-    if (isNativePlatform) {
-      // 原生平台：使用 Capacitor Filesystem
-      const { Filesystem, Directory } = await import('@capacitor/filesystem')
-      const { CapacitorHttp } = await import('@capacitor/core')
-      
-      // 创建下载目录
-      const downloadDir = 'FocusGarden/BilibiliAudio'
-      try {
-        await Filesystem.mkdir({
-          path: downloadDir,
-          directory: Directory.Documents,
-          recursive: true
-        })
-      } catch (e) {
-        // 目录可能已存在
-      }
-      
-      // 下载文件
-      const response = await CapacitorHttp.get({
-        url: audioUrl,
-        responseType: 'blob',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
-          'Referer': 'https://www.bilibili.com/'
-        }
-      })
-      
-      if (response.status !== 200) {
-        throw new Error(`下载失败: HTTP ${response.status}`)
-      }
-      
-      await Filesystem.writeFile({
-        path: `${downloadDir}/${fileName}`,
-        data: response.data,
-        directory: Directory.Documents
-      })
-      
-      alert(`下载完成: ${fileName}`)
-    } else {
-      // Web端：通过代理下载
-      const proxyUrl = `/api/bili-proxy?url=${encodeURIComponent(audioUrl)}`
-      const response = await fetch(proxyUrl)
-      
-      if (!response.ok) {
-        throw new Error(`下载失败: HTTP ${response.status}`)
-      }
-      
-      const blob = await response.blob()
-      const downloadUrl = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = downloadUrl
-      a.download = fileName
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(downloadUrl)
-    }
+    const fileName = `${sanitizeFileName(title)}.m4a`
+    await downloadAudioFile(audioUrl, fileName)
+    alert(`下载完成: ${fileName}`)
   } catch (error) {
     console.error('下载失败:', error)
     alert(`下载失败: ${error.message}`)
   } finally {
     isDownloading.value = null
+  }
+}
+
+async function downloadParsedAudio() {
+  if (!parsedVideo.value || batchDownloadState.running) return
+  const pages = parsedVideo.value.pages || []
+  if (!pages.length) return
+
+  batchDownloadError.value = ''
+  batchDownloadMessage.value = ''
+  batchDownloadState.running = true
+  batchDownloadState.total = pages.length
+  batchDownloadState.finished = 0
+  batchDownloadState.failed = 0
+
+  const folderName = sanitizeFileName(parsedVideo.value.title || parsedVideo.value.bvid || 'Bilibili')
+
+  for (const page of pages) {
+    try {
+      const audioUrl = await getBestAudioUrl(parsedVideo.value.bvid, page.cid)
+      const pageTitle = page.title || `P${page.page}`
+      const fileName = `${folderName}-P${page.page}-${sanitizeFileName(pageTitle)}.m4a`
+      await downloadAudioFile(audioUrl, fileName, folderName)
+      batchDownloadState.finished++
+    } catch (e) {
+      batchDownloadState.failed++
+      batchDownloadError.value = e.message || '下载失败，请稍后重试'
+    }
+  }
+
+  batchDownloadState.running = false
+  const processed = batchDownloadState.finished + batchDownloadState.failed
+  if (processed) {
+    batchDownloadMessage.value = batchDownloadState.failed === 0
+      ? `已完成 ${batchDownloadState.finished}/${pages.length} 集下载`
+      : `完成 ${processed}/${pages.length} 集，失败 ${batchDownloadState.failed} 集`
   }
 }
 
@@ -1086,6 +1212,27 @@ onUnmounted(() => {
           >
             应用筛选
           </button>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <button
+          @click="clearAudioCache"
+          :disabled="cacheClearing"
+          class="w-full flex items-center justify-between px-4 py-3 bg-white rounded-2xl border border-pink-100 shadow-sm hover:bg-pink-50 transition-colors disabled:opacity-60"
+        >
+          <div class="flex items-center gap-2 text-sm font-semibold text-gray-700">
+            <Trash2 :size="16" class="text-pink-500" />
+            <span>清空音频缓存</span>
+          </div>
+          <span class="text-[11px] text-gray-400">
+            {{ isNativePlatform ? '删除下载与进度' : '重置播放缓存' }}
+          </span>
+        </button>
+        <div v-if="cacheClearing || cacheMessage || cacheError" class="mt-2 text-xs">
+          <p v-if="cacheClearing" class="text-pink-500">正在清理缓存...</p>
+          <p v-else-if="cacheMessage" class="text-emerald-600">{{ cacheMessage }}</p>
+          <p v-else-if="cacheError" class="text-red-500">{{ cacheError }}</p>
         </div>
       </div>
 
@@ -1482,12 +1629,29 @@ onUnmounted(() => {
                     从头播放
                   </button>
                   <button 
+                    @click="downloadParsedAudio"
+                    :disabled="batchDownloadState.running"
+                    class="flex items-center gap-1.5 px-3 py-2 bg-white text-pink-600 rounded-xl text-xs font-bold border border-pink-100 hover:bg-pink-50 transition-colors disabled:opacity-50"
+                  >
+                    <Loader2 v-if="batchDownloadState.running" :size="14" class="animate-spin" />
+                    <Download v-else :size="14" />
+                    {{ batchDownloadState.running ? `缓存中 ${batchDownloadState.finished + batchDownloadState.failed}/${batchDownloadState.total}` : '批量下载' }}
+                  </button>
+                  <button 
                     @click="showParsedPages = !showParsedPages"
                     class="flex items-center gap-1 px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 transition-colors"
                   >
                     <List :size="14" />
                     {{ showParsedPages ? '收起' : '选集' }}
                   </button>
+                </div>
+                <div v-if="batchDownloadState.running || batchDownloadMessage || batchDownloadError" class="mt-2 text-xs space-y-1">
+                  <p v-if="batchDownloadState.running" class="text-pink-500 flex items-center gap-1">
+                    <Loader2 :size="12" class="animate-spin" />
+                    正在缓存音频 {{ batchDownloadState.finished + batchDownloadState.failed }}/{{ batchDownloadState.total }}
+                  </p>
+                  <p v-if="batchDownloadMessage" class="text-emerald-600">{{ batchDownloadMessage }}</p>
+                  <p v-if="batchDownloadError" class="text-red-500">{{ batchDownloadError }}</p>
                 </div>
               </div>
             </div>
