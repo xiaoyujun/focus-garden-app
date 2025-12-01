@@ -166,6 +166,10 @@ export const useAppStore = defineStore('app', () => {
         recycleBin.value = parsed.recycleBin || []
         focusRecords.value = parsed.focusRecords || []
         coins.value = parsed.coins || 0
+        if (parsed.currentFocus) {
+          const seed = parsed.currentFocus.seed || seedTypes.find(s => s.id === parsed.currentFocus.seedId)
+          currentFocus.value = { ...parsed.currentFocus, seed }
+        }
       }
     } catch (e) {
       console.error('加载数据失败:', e)
@@ -181,13 +185,14 @@ export const useAppStore = defineStore('app', () => {
       recycleBin: recycleBin.value,
       focusRecords: focusRecords.value,
       coins: coins.value,
+      currentFocus: currentFocus.value,
       exportedAt: new Date().toISOString()
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
   }
 
   // 监听数据变化自动保存
-  watch([todos, todoGroups, recycleBin, focusRecords, coins], saveToStorage, { deep: true })
+  watch([todos, todoGroups, recycleBin, focusRecords, coins, currentFocus], saveToStorage, { deep: true })
 
   // ===== 待办事项相关 =====
   function addTodo(text, groupId = 'general') {
@@ -294,7 +299,7 @@ export const useAppStore = defineStore('app', () => {
   // ===== 专注会话相关 =====
   function startFocus(seedId, note = '') {
     // 已有进行中的会话时避免重复开启
-    if (currentFocus.value) return false
+    if (currentFocus.value && currentFocus.value.status === 'running') return false
     const seed = seedTypes.find(s => s.id === seedId)
     if (!seed) return false
 
@@ -303,13 +308,38 @@ export const useAppStore = defineStore('app', () => {
       seed,
       note,
       startedAt: new Date().toISOString(),
-      status: 'running'
+      status: 'running',
+      elapsedBeforePause: 0
     }
     return true
   }
 
+  function pauseFocus() {
+    if (!currentFocus.value || currentFocus.value.status !== 'running') return
+    const startedAt = new Date(currentFocus.value.startedAt).getTime()
+    const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+    currentFocus.value.elapsedBeforePause = (currentFocus.value.elapsedBeforePause || 0) + elapsed
+    currentFocus.value.status = 'paused'
+  }
+
+  function resumeFocus() {
+    if (!currentFocus.value || currentFocus.value.status !== 'paused') return
+    currentFocus.value.startedAt = new Date().toISOString()
+    currentFocus.value.status = 'running'
+  }
+
   function cancelFocus() {
     currentFocus.value = null
+  }
+
+  function getCurrentFocusRemainingSeconds() {
+    if (!currentFocus.value || !currentFocus.value.seed) return 0
+    const total = (currentFocus.value.seed.minutes || 0) * 60
+    const elapsed = currentFocus.value.elapsedBeforePause || 0
+    const runningElapsed = currentFocus.value.status === 'running'
+      ? Math.max(0, Math.floor((Date.now() - new Date(currentFocus.value.startedAt).getTime()) / 1000))
+      : 0
+    return Math.max(0, total - elapsed - runningElapsed)
   }
 
   // 生成随机作物属性（受周期加成影响）
@@ -509,8 +539,11 @@ export const useAppStore = defineStore('app', () => {
     updateTodoGroup,
     deleteTodoGroup,
     startFocus,
+    pauseFocus,
+    resumeFocus,
     completeFocus,
     cancelFocus,
+    getCurrentFocusRemainingSeconds,
     sellCrop,
     toggleStar,
     exportData,

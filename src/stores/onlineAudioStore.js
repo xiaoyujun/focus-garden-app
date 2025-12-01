@@ -4,10 +4,13 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
+import { Capacitor } from '@capacitor/core'
 
 const STORAGE_KEY = 'bilibili-player-state'
 const PROGRESS_STORAGE_KEY = 'bilibili-audio-progress'
 const PROGRESS_SAVE_INTERVAL = 5000
+const isNative = Capacitor.isNativePlatform()
+let preferencesPromise = null
 
 export const useOnlineAudioStore = defineStore('onlineAudio', () => {
   // ===== 核心状态 =====
@@ -58,7 +61,15 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
   const formattedDuration = computed(() => formatTime(duration.value))
 
   // ===== 本地存储 =====
-  function loadFromStorage() {
+  async function getPreferences() {
+    if (!isNative) return null
+    if (!preferencesPromise) {
+      preferencesPromise = import('@capacitor/preferences').then(m => m.Preferences)
+    }
+    return preferencesPromise
+  }
+
+  async function loadFromStorage() {
     try {
       const data = localStorage.getItem(STORAGE_KEY)
       if (data) {
@@ -80,29 +91,62 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
     } catch (e) {
       console.error('加载B站播放状态失败:', e)
     }
+
+    // 原生端补充从 Preferences 读取，避免 WebView 重建后进度丢失
+    if (isNative) {
+      try {
+        const prefs = await getPreferences()
+        if (prefs) {
+          const [stateRes, progressRes] = await Promise.all([
+            prefs.get({ key: STORAGE_KEY }),
+            prefs.get({ key: PROGRESS_STORAGE_KEY })
+          ])
+          if (stateRes?.value) {
+            const parsed = JSON.parse(stateRes.value)
+            volume.value = parsed.volume ?? volume.value
+            playbackRate.value = parsed.playbackRate ?? playbackRate.value
+            if (parsed.currentVideo) {
+              currentVideo.value = parsed.currentVideo
+              currentPlaylist.value = parsed.currentPlaylist || []
+              currentIndex.value = parsed.currentIndex ?? currentIndex.value
+            }
+          }
+          if (progressRes?.value) {
+            progressMap.value = JSON.parse(progressRes.value)
+          }
+        }
+      } catch (e) {
+        console.warn('原生端读取播放状态失败:', e)
+      }
+    }
+  }
+
+  function persistToStorage(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value))
+    } catch (e) {
+      console.error(`保存 ${key} 到本地存储失败:`, e)
+    }
+    if (isNative) {
+      getPreferences()
+        .then(prefs => prefs?.set({ key, value: JSON.stringify(value) }))
+        .catch(e => console.warn(`保存 ${key} 到原生存储失败:`, e))
+    }
   }
 
   function saveToStorage() {
-    try {
-      const data = {
-        volume: volume.value,
-        playbackRate: playbackRate.value,
-        currentVideo: currentVideo.value,
-        currentPlaylist: currentPlaylist.value,
-        currentIndex: currentIndex.value
-      }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-    } catch (e) {
-      console.error('保存B站播放状态失败:', e)
+    const data = {
+      volume: volume.value,
+      playbackRate: playbackRate.value,
+      currentVideo: currentVideo.value,
+      currentPlaylist: currentPlaylist.value,
+      currentIndex: currentIndex.value
     }
+    persistToStorage(STORAGE_KEY, data)
   }
 
   function saveProgressToStorage() {
-    try {
-      localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progressMap.value))
-    } catch (e) {
-      console.error('保存播放进度失败:', e)
-    }
+    persistToStorage(PROGRESS_STORAGE_KEY, progressMap.value)
   }
 
   // 监听变化自动保存
@@ -325,7 +369,33 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
     }
   }
 
+  // 应用生命周期监听，后台时强制落盘
+  function setupLifecycleListeners() {
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          saveProgress(true)
+          saveToStorage()
+        }
+      })
+    }
+
+    if (isNative) {
+      import('@capacitor/app')
+        .then(({ App }) => {
+          App.addListener('appStateChange', ({ isActive }) => {
+            if (!isActive) {
+              saveProgress(true)
+              saveToStorage()
+            }
+          })
+        })
+        .catch(e => console.warn('注册原生生命周期监听失败:', e))
+    }
+  }
+
   // 初始化
+  setupLifecycleListeners()
   loadFromStorage()
 
   return {

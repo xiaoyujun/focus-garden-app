@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useAppStore } from '../stores/gameStore'
+import { Capacitor } from '@capacitor/core'
 import { Download, Upload, Trash2, Database, Timer, ListTodo, AlertCircle, RefreshCw, ExternalLink, Smartphone } from 'lucide-vue-next'
 import { APP_VERSION, checkForUpdate, hasNewVersion, formatReleaseDate } from '../services/updateService'
 
@@ -11,6 +12,7 @@ const showImportModal = ref(false)
 const importText = ref('')
 const importError = ref('')
 const showConfirmClear = ref(false)
+const exporting = ref(false)
 
 // 更新检测状态
 const checking = ref(false)
@@ -35,17 +37,76 @@ function formatMinutes(minutes) {
 }
 
 // 导出数据
-function handleExport() {
-  const data = store.exportData()
+async function handleExport() {
+  if (exporting.value) return
+  exporting.value = true
+  const fileName = `focus-garden-${new Date().toISOString().slice(0, 10)}.json`
+
+  try {
+    const data = store.exportData()
+    if (Capacitor.isNativePlatform()) {
+      await exportOnNative(data, fileName)
+    } else {
+      exportOnWeb(data, fileName)
+      alert('导出成功，请在浏览器下载列表中查看。')
+    }
+  } catch (error) {
+    alert(`导出失败：${error?.message || error}`)
+  } finally {
+    exporting.value = false
+  }
+}
+
+// 浏览器环境：a 标签触发下载
+function exportOnWeb(data, fileName) {
   const blob = new Blob([data], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `focus-garden-${new Date().toISOString().slice(0, 10)}.json`
+  a.download = fileName
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+// 移动端：写入系统文件目录，避免部分 WebView 拦截下载
+async function exportOnNative(data, fileName) {
+  const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
+  const folder = 'FocusGarden'
+  const path = `${folder}/${fileName}`
+
+  try {
+    await Filesystem.mkdir({
+      path: folder,
+      directory: Directory.Documents,
+      recursive: true
+    })
+  } catch (e) {
+    // 目录已存在忽略
+  }
+
+  await Filesystem.writeFile({
+    path,
+    data,
+    directory: Directory.Documents,
+    encoding: Encoding.UTF8
+  })
+
+  const { uri } = await Filesystem.getUri({
+    path,
+    directory: Directory.Documents
+  })
+
+  const fileUrl = Capacitor.convertFileSrc(uri)
+  try {
+    // 尝试直接打开，便于用户跳转到系统文件查看
+    window.open(fileUrl, '_blank')
+  } catch (e) {
+    // 忽略打开失败，仍提示路径
+  }
+
+  alert(`导出成功：${fileName}\n已保存到“文件/文档/FocusGarden”目录。\n若文件管理器未显示，请搜索文件名或在 Download/下载 目录中查找。`)
 }
 
 // 打开导入弹窗
@@ -167,14 +228,15 @@ function openDownload(url) {
         
         <button 
           @click="handleExport"
-          class="w-full p-4 flex items-center hover:bg-slate-50 transition-colors border-b border-slate-100"
+          :disabled="exporting"
+          class="w-full p-4 flex items-center hover:bg-slate-50 transition-colors border-b border-slate-100 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <div class="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center mr-4">
             <Download :size="20" class="text-emerald-600" />
           </div>
           <div class="flex-1 text-left">
-            <p class="font-medium text-slate-800">导出数据</p>
-            <p class="text-sm text-slate-500">下载 JSON 格式的备份文件</p>
+            <p class="font-medium text-slate-800">{{ exporting ? '导出中...' : '导出数据' }}</p>
+            <p class="text-sm text-slate-500">下载/保存 JSON 格式的备份文件</p>
           </div>
         </button>
 

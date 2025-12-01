@@ -54,6 +54,43 @@ function getRarityConfig(id) {
   return store.rarities.find(r => r.id === id) || store.rarities[0]
 }
 
+function getSelectedSeedMinutes() {
+  return selectedSeed.value ? selectedSeed.value.minutes * 60 : 0
+}
+
+// 基于 store 的专注状态同步剩余时间，避免切屏丢进度
+function syncFocusFromStore() {
+  if (!store.currentFocus) {
+    isRunning.value = false
+    timeLeft.value = getSelectedSeedMinutes()
+    return
+  }
+
+  // 补齐本地 UI 状态
+  const seed = store.currentFocus.seed || store.seedTypes.find(s => s.id === store.currentFocus.seedId)
+  if (seed) {
+    selectedSeed.value = seed
+    note.value = store.currentFocus.note || ''
+  }
+
+  const remaining = store.getCurrentFocusRemainingSeconds()
+  timeLeft.value = remaining
+  isRunning.value = store.currentFocus.status === 'running' && remaining > 0
+
+  if (remaining <= 0 && store.currentFocus.status === 'running') {
+    completeTimer()
+    return
+  }
+}
+
+function startTick() {
+  clearInterval(timer)
+  syncFocusFromStore()
+  timer = setInterval(() => {
+    syncFocusFromStore()
+  }, 1000)
+}
+
 // 选择种子
 function selectSeed(seed) {
   if (isRunning.value) return
@@ -63,24 +100,30 @@ function selectSeed(seed) {
 
 // 开始计时
 function startTimer() {
-  if (!selectedSeed.value || isRunning.value) return
-  
-  store.startFocus(selectedSeed.value.id, note.value)
-  isRunning.value = true
-  
-  timer = setInterval(() => {
-    if (timeLeft.value > 0) {
-      timeLeft.value--
-    } else {
-      completeTimer()
-    }
-  }, 1000)
+  if (!selectedSeed.value) return
+
+  // 已暂停则继续
+  if (store.currentFocus && store.currentFocus.status === 'paused') {
+    store.resumeFocus()
+    startTick()
+    return
+  }
+
+  // 已在运行则忽略重复点击
+  if (store.currentFocus && store.currentFocus.status === 'running') {
+    return
+  }
+
+  if (!store.startFocus(selectedSeed.value.id, note.value)) return
+  startTick()
 }
 
 // 暂停计时
 function pauseTimer() {
+  store.pauseFocus()
   clearInterval(timer)
   isRunning.value = false
+  syncFocusFromStore()
 }
 
 // 重置
@@ -252,6 +295,12 @@ watch(() => audioStore.currentIndex, async (newVal, oldVal) => {
 })
 
 onMounted(() => {
+  // 恢复专注计时（切屏/重进仍持续）
+  syncFocusFromStore()
+  if (isRunning.value) {
+    startTick()
+  }
+
   if (audioStore.hasPlaylist) {
     loadMiniTrack()
   }
