@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="冰属性"
+  data-badge-description="冰清玉洁，凝结专注的结晶"
+  data-badge-price="150"
+  data-badge-rarity="rare"
+  data-badge-category="pokemon">
+  <defs>
+    <linearGradient id="bgIce" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#cffafe"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 冰蓝色背景 -->
+  <circle cx="50" cy="50" r="45" fill="url(#bgIce)" stroke="#0891b2" stroke-width="3"/>
+  
+  <!-- 雪花图案 -->
+  <line x1="50" y1="20" x2="50" y2="80" stroke="#fff" stroke-width="4"/>
+  <line x1="20" y1="50" x2="80" y2="50" stroke="#fff" stroke-width="4"/>
+  <line x1="28" y1="28" x2="72" y2="72" stroke="#fff" stroke-width="3"/>
+  <line x1="72" y1="28" x2="28" y2="72" stroke="#fff" stroke-width="3"/>
+  
+  <!-- 雪花装饰 -->
+  <circle cx="50" cy="50" r="8" fill="#e0f2fe"/>
+  <circle cx="50" cy="25" r="4" fill="#e0f2fe"/>
+  <circle cx="50" cy="75" r="4" fill="#e0f2fe"/>
+  <circle cx="25" cy="50" r="4" fill="#e0f2fe"/>
+  <circle cx="75" cy="50" r="4" fill="#e0f2fe"/>
+</svg>

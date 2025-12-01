@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="器皿骑士"
+  data-badge-description="空洞的器皿，背负着圣巢的命运前行"
+  data-badge-price="300"
+  data-badge-rarity="rare"
+  data-badge-category="hollow">
   <defs>
     <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur stdDeviation="2" result="blur"/>

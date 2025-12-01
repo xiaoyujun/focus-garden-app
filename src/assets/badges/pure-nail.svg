@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="纯粹之钉"
+  data-badge-description="经过反复锻造的武器，锋利无比，斩断一切阻碍"
+  data-badge-price="400"
+  data-badge-rarity="epic"
+  data-badge-category="hollow">
   <!-- 剑刃 -->
   <path d="M45 90 L 40 20 L 50 5 L 60 20 L 55 90 Z" fill="#e5e7eb" stroke="#9ca3af" stroke-width="2"/>
   <!-- 纹路 -->

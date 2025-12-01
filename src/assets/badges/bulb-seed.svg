@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="奇异种子"
+  data-badge-description="背上的种子蕴含着无限的生长潜力"
+  data-badge-price="250"
+  data-badge-rarity="rare"
+  data-badge-category="pokemon">
   <defs>
     <linearGradient id="bgBulb" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#86efac"/>

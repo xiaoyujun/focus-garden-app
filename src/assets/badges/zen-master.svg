@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="禅心大师"
+  data-badge-description="心如止水，专注当下，禅意满满"
+  data-badge-price="500"
+  data-badge-rarity="epic"
+  data-badge-category="special">
   <defs>
     <linearGradient id="bgZen" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#d8b4fe"/>

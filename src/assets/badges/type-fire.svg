@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="火属性"
+  data-badge-description="燃烧的斗志，永不熄灭的热情"
+  data-badge-price="120"
+  data-badge-rarity="uncommon"
+  data-badge-category="pokemon">
+  <defs>
+    <linearGradient id="bgFire" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fca5a5"/>
+      <stop offset="100%" style="stop-color:#dc2626"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#f97316"/>
+      <stop offset="50%" style="stop-color:#eab308"/>
+      <stop offset="100%" style="stop-color:#fef08a"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 红色背景 -->
+  <circle cx="50" cy="50" r="45" fill="url(#bgFire)" stroke="#b91c1c" stroke-width="3"/>
+  
+  <!-- 火焰图案 -->
+  <path d="M50 20 Q70 40 65 55 Q80 50 70 70 Q75 85 50 85 Q25 85 30 70 Q20 50 35 55 Q30 40 50 20" fill="url(#flame)"/>
+  <path d="M50 35 Q60 50 55 60 Q60 70 50 75 Q40 70 45 60 Q40 50 50 35" fill="#fef9c3"/>
+</svg>

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="钢属性"
+  data-badge-description="坚不可摧，钢铁般的意志"
+  data-badge-price="200"
+  data-badge-rarity="rare"
+  data-badge-category="pokemon">
+  <defs>
+    <linearGradient id="bgSteel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#d4d4d8"/>
+      <stop offset="50%" style="stop-color:#a1a1aa"/>
+      <stop offset="100%" style="stop-color:#71717a"/>
+    </linearGradient>
+    <linearGradient id="steelShine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fafafa"/>
+      <stop offset="50%" style="stop-color:#e4e4e7"/>
+      <stop offset="100%" style="stop-color:#a1a1aa"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 银灰色背景 -->
+  <circle cx="50" cy="50" r="45" fill="url(#bgSteel)" stroke="#52525b" stroke-width="3"/>
+  
+  <!-- 钢铁齿轮 -->
+  <circle cx="50" cy="50" r="25" fill="url(#steelShine)"/>
+  <circle cx="50" cy="50" r="18" fill="#71717a"/>
+  <circle cx="50" cy="50" r="8" fill="#e4e4e7"/>
+  
+  <!-- 齿轮齿 -->
+  <rect x="47" y="20" width="6" height="12" fill="url(#steelShine)"/>
+  <rect x="47" y="68" width="6" height="12" fill="url(#steelShine)"/>
+  <rect x="20" y="47" width="12" height="6" fill="url(#steelShine)"/>
+  <rect x="68" y="47" width="12" height="6" fill="url(#steelShine)"/>
+  
+  <!-- 斜向齿 -->
+  <rect x="27" y="27" width="6" height="10" fill="url(#steelShine)" transform="rotate(45 30 32)"/>
+  <rect x="67" y="27" width="6" height="10" fill="url(#steelShine)" transform="rotate(-45 70 32)"/>
+  <rect x="27" y="63" width="6" height="10" fill="url(#steelShine)" transform="rotate(-45 30 68)"/>
+  <rect x="67" y="63" width="6" height="10" fill="url(#steelShine)" transform="rotate(45 70 68)"/>
+</svg>

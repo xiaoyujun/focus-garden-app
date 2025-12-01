@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="飞行属性"
+  data-badge-description="展翅高飞，翱翔天际的自由"
+  data-badge-price="120"
+  data-badge-rarity="uncommon"
+  data-badge-category="pokemon">
+  <defs>
+    <linearGradient id="bgFlying" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#c4b5fd"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 浅紫色背景 -->
+  <circle cx="50" cy="50" r="45" fill="url(#bgFlying)" stroke="#6d28d9" stroke-width="3"/>
+  
+  <!-- 翅膀图案 -->
+  <path d="M50 50 Q30 30 15 35 Q25 45 30 50 Q20 55 15 70 Q35 60 50 50" fill="#ede9fe"/>
+  <path d="M50 50 Q70 30 85 35 Q75 45 70 50 Q80 55 85 70 Q65 60 50 50" fill="#ede9fe"/>
+  
+  <!-- 羽毛纹理 -->
+  <path d="M35 45 L25 40" stroke="#a78bfa" stroke-width="1.5"/>
+  <path d="M65 45 L75 40" stroke="#a78bfa" stroke-width="1.5"/>
+  
+  <!-- 风线 -->
+  <path d="M35 70 Q45 68 55 72" stroke="#fff" stroke-width="2" opacity="0.7"/>
+  <path d="M40 75 Q50 73 60 77" stroke="#fff" stroke-width="1.5" opacity="0.5"/>
+</svg>

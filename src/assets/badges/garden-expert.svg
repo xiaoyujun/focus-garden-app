@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="花园专家"
+  data-badge-description="精心培育花园，见证生命的成长"
+  data-badge-price="200"
+  data-badge-rarity="uncommon"
+  data-badge-category="garden">
   <defs>
     <linearGradient id="bgGarden" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#5eead4"/>

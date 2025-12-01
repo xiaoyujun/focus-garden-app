@@ -2,6 +2,42 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { useAppStore } from './gameStore'
 
+// ==================== SVG 徽章动态加载 ====================
+// 徽章目录现在从 SVG 文件的 data-badge-* 属性动态加载
+// 添加新徽章时只需创建带有元数据的 SVG 文件即可
+
+// 使用 Vite glob import 加载所有徽章 SVG 文件的原始内容
+const badgeSvgModules = import.meta.glob('@/assets/badges/*.svg', { query: '?raw', eager: true, import: 'default' })
+
+// 解析 SVG 中的 data-badge-* 属性
+function parseBadgeFromSvg(svgContent, filename) {
+  // 提取文件名作为 id（去掉路径和扩展名）
+  const id = filename.replace(/^.*[\/\\]/, '').replace('.svg', '')
+  
+  // 解析 data-badge-* 属性
+  const nameMatch = svgContent.match(/data-badge-name="([^"]+)"/)
+  const descMatch = svgContent.match(/data-badge-description="([^"]+)"/)
+  const priceMatch = svgContent.match(/data-badge-price="([^"]+)"/)
+  const rarityMatch = svgContent.match(/data-badge-rarity="([^"]+)"/)
+  const categoryMatch = svgContent.match(/data-badge-category="([^"]+)"/)
+  
+  // 如果没有 name 元数据，跳过该文件
+  if (!nameMatch) {
+    console.warn(`[BadgeStore] 跳过无元数据的徽章: ${id}`)
+    return null
+  }
+  
+  return {
+    id,
+    name: nameMatch[1],
+    description: descMatch ? descMatch[1] : '',
+    price: priceMatch ? parseInt(priceMatch[1], 10) : 100,
+    rarity: rarityMatch ? rarityMatch[1] : 'common',
+    category: categoryMatch ? categoryMatch[1] : 'special',
+    svg: `${id}.svg`
+  }
+}
+
 // ==================== 推币机系统配置 ====================
 
 // 推币机特征配置
@@ -69,183 +105,30 @@ const MACHINE_TRAITS = {
 const MACHINE_BASE_PRICE = 80 // 基础价格
 
 // ==================== 徽章目录配置 ====================
+// 徽章目录从 SVG 文件的 data-badge-* 属性动态加载
+// 添加新徽章时只需创建带有元数据的 SVG 文件即可
 
-// 徽章目录配置
-// 添加新徽章时只需在此数组中添加一项
-const BADGE_CATALOG = [
-  {
-    id: 'focus-beginner',
-    name: '专注新手',
-    description: '迈出专注的第一步，每一次开始都值得铭记',
-    price: 50,
-    rarity: 'common',
-    category: 'focus',
-    svg: 'focus-beginner.svg'
-  },
-  {
-    id: 'focus-warrior',
-    name: '专注战士',
-    description: '勇敢面对时间的挑战，专注力量日益增长',
-    price: 150,
-    rarity: 'uncommon',
-    category: 'focus',
-    svg: 'focus-warrior.svg'
-  },
-  {
-    id: 'early-bird',
-    name: '早起鸟',
-    description: '清晨的阳光属于早起的人，一日之计在于晨',
-    price: 100,
-    rarity: 'common',
-    category: 'time',
-    svg: 'early-bird.svg'
-  },
-  {
-    id: 'night-owl',
-    name: '夜猫子',
-    description: '夜深人静时的专注，静谧中蕴藏力量',
-    price: 100,
-    rarity: 'common',
-    category: 'time',
-    svg: 'night-owl.svg'
-  },
-  {
-    id: 'streak-master',
-    name: '连续达人',
-    description: '坚持不懈的努力，连续打卡的荣耀',
-    price: 300,
-    rarity: 'rare',
-    category: 'achievement',
-    svg: 'streak-master.svg'
-  },
-  {
-    id: 'garden-expert',
-    name: '花园专家',
-    description: '精心培育花园，见证生命的成长',
-    price: 200,
-    rarity: 'uncommon',
-    category: 'garden',
-    svg: 'garden-expert.svg'
-  },
-  {
-    id: 'todo-champion',
-    name: '待办冠军',
-    description: '高效完成任务，GTD大师的象征',
-    price: 180,
-    rarity: 'uncommon',
-    category: 'todo',
-    svg: 'todo-champion.svg'
-  },
-  {
-    id: 'coin-collector',
-    name: '金币收藏家',
-    description: '财富的积累源于点滴的努力',
-    price: 250,
-    rarity: 'uncommon',
-    category: 'economy',
-    svg: 'coin-collector.svg'
-  },
-  {
-    id: 'zen-master',
-    name: '禅心大师',
-    description: '心如止水，专注当下，禅意满满',
-    price: 500,
-    rarity: 'epic',
-    category: 'special',
-    svg: 'zen-master.svg'
-  },
-  {
-    id: 'star-hunter',
-    name: '追星猎人',
-    description: '收集稀有作物的勇者，追逐每一颗闪耀的星',
-    price: 350,
-    rarity: 'rare',
-    category: 'collection',
-    svg: 'star-hunter.svg'
-  },
-  {
-    id: 'legendary-focus',
-    name: '传奇专注',
-    description: '专注力的巅峰，传说中的存在，仅供真正的大师',
-    price: 1000,
-    rarity: 'legendary',
-    category: 'special',
-    svg: 'legendary-focus.svg'
-  },
-  {
-    id: 'time-traveler',
-    name: '时间旅者',
-    description: '掌控时间的流逝，穿梭于专注的时空',
-    price: 400,
-    rarity: 'rare',
-    category: 'time',
-    svg: 'time-traveler.svg'
-  },
-  // 宝可梦系列
-  {
-    id: 'poke-ball',
-    name: '专注球',
-    description: '能够捕捉任何灵感的神秘球体',
-    price: 100,
-    rarity: 'common',
-    category: 'pokemon',
-    svg: 'poke-ball.svg'
-  },
-  {
-    id: 'pika-spark',
-    name: '电光鼠',
-    description: '充满活力的十万伏特专注力',
-    price: 250,
-    rarity: 'rare',
-    category: 'pokemon',
-    svg: 'pika-spark.svg'
-  },
-  {
-    id: 'charm-flame',
-    name: '小火龙',
-    description: '尾巴上的火焰代表着永不熄灭的热情',
-    price: 250,
-    rarity: 'rare',
-    category: 'pokemon',
-    svg: 'charm-flame.svg'
-  },
-  {
-    id: 'bulb-seed',
-    name: '奇异种子',
-    description: '背上的种子蕴含着无限的生长潜力',
-    price: 250,
-    rarity: 'rare',
-    category: 'pokemon',
-    svg: 'bulb-seed.svg'
-  },
-  {
-    id: 'squirt-bubble',
-    name: '杰尼龟',
-    description: '冷静如水，从容面对一切挑战',
-    price: 250,
-    rarity: 'rare',
-    category: 'pokemon',
-    svg: 'squirt-bubble.svg'
-  },
-  {
-    id: 'evee-star',
-    name: '伊布星',
-    description: '拥有无限进化的可能性，未来由你决定',
-    price: 300,
-    rarity: 'epic',
-    category: 'pokemon',
-    svg: 'evee-star.svg'
-  },
-  {
-    id: 'snor-sleep',
-    name: '瞌睡兽',
-    description: '休息是为了走更长远的路',
-    price: 200,
-    rarity: 'uncommon',
-    category: 'pokemon',
-    svg: 'snor-sleep.svg'
+// 动态生成徽章目录
+function loadBadgeCatalog() {
+  const catalog = []
+  
+  for (const [path, content] of Object.entries(badgeSvgModules)) {
+    const badge = parseBadgeFromSvg(content, path)
+    if (badge) {
+      catalog.push(badge)
+    }
   }
-]
+  
+  // 按稀有度排序：普通 -> 优秀 -> 稀有 -> 史诗 -> 传奇
+  const rarityOrder = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 }
+  catalog.sort((a, b) => rarityOrder[a.rarity] - rarityOrder[b.rarity])
+  
+  console.log(`[BadgeStore] 已加载 ${catalog.length} 个徽章`)
+  return catalog
+}
+
+// 加载徽章目录
+const BADGE_CATALOG = loadBadgeCatalog()
 
 // 稀有度配置
 const RARITY_CONFIG = {
@@ -267,7 +150,8 @@ const CATEGORY_CONFIG = {
   collection: { name: '收藏系列', icon: '⭐' },
   special: { name: '特别系列', icon: '✨' },
   pokemon: { name: '精灵系列', icon: '🐱' },
-  game: { name: '游戏系列', icon: '🎮' }
+  game: { name: '游戏系列', icon: '🎮' },
+  hollow: { name: '空洞骑士', icon: '🗡️' }
 }
 
 const STORAGE_KEY = 'focus-garden-badges'

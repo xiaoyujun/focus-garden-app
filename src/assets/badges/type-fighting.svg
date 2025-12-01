@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="格斗属性"
+  data-badge-description="以拳为誓，战斗不息的意志"
+  data-badge-price="150"
+  data-badge-rarity="rare"
+  data-badge-category="pokemon">
+  <defs>
+    <linearGradient id="bgFighting" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fca5a5"/>
+      <stop offset="100%" style="stop-color:#b91c1c"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 红棕色背景 -->
+  <circle cx="50" cy="50" r="45" fill="url(#bgFighting)" stroke="#991b1b" stroke-width="3"/>
+  
+  <!-- 拳头图案 -->
+  <path d="M35 55 L35 40 Q35 35 40 35 L45 35 Q50 35 50 40 L50 45 Q50 35 55 35 L60 35 Q65 35 65 40 L65 55 Q65 70 50 75 Q35 70 35 55" fill="#fef2f2"/>
+  <rect x="35" y="55" width="30" height="15" rx="5" fill="#fef2f2"/>
+  
+  <!-- 拳头细节 -->
+  <line x1="42" y1="58" x2="42" y2="68" stroke="#fca5a5" stroke-width="1"/>
+  <line x1="50" y1="58" x2="50" y2="68" stroke="#fca5a5" stroke-width="1"/>
+  <line x1="58" y1="58" x2="58" y2="68" stroke="#fca5a5" stroke-width="1"/>
+</svg>

@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="伊布星"
+  data-badge-description="拥有无限进化的可能性，未来由你决定"
+  data-badge-price="300"
+  data-badge-rarity="epic"
+  data-badge-category="pokemon">
   <defs>
     <linearGradient id="bgEvee" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#d6d3d1"/>

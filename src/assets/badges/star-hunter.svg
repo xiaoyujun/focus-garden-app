@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="追星猎人"
+  data-badge-description="收集稀有作物的勇者，追逐每一颗闪耀的星"
+  data-badge-price="350"
+  data-badge-rarity="rare"
+  data-badge-category="collection">
   <defs>
     <linearGradient id="bgStar" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#f472b6"/>

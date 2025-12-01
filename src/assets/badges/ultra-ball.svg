@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="高级球"
+  data-badge-description="精英训练师的标配，稳定可靠"
+  data-badge-price="350"
+  data-badge-rarity="rare"
+  data-badge-category="pokemon">
   <defs>
     <radialGradient id="ballShine" cx="30%" cy="30%" r="60%">
       <stop offset="0%" style="stop-color:#fff;stop-opacity:0.4"/>

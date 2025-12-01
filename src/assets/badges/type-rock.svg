@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="岩石属性"
+  data-badge-description="坚如磐石，不可动摇的意志"
+  data-badge-price="120"
+  data-badge-rarity="uncommon"
+  data-badge-category="pokemon">
+  <defs>
+    <linearGradient id="bgRock" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#d6d3d1"/>
+      <stop offset="100%" style="stop-color:#78716c"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 棕灰色背景 -->
+  <circle cx="50" cy="50" r="45" fill="url(#bgRock)" stroke="#57534e" stroke-width="3"/>
+  
+  <!-- 岩石图案 -->
+  <polygon points="50,20 70,35 75,55 60,75 40,75 25,55 30,35" fill="#e7e5e4"/>
+  <polygon points="50,28 65,40 68,55 58,70 42,70 32,55 35,40" fill="#a8a29e"/>
+  
+  <!-- 岩石裂缝 -->
+  <path d="M45 35 L50 50 L42 65" stroke="#44403c" stroke-width="2" fill="none"/>
+  <path d="M55 40 L58 55 L52 68" stroke="#44403c" stroke-width="1.5" fill="none"/>
+  
+  <!-- 高光 -->
+  <polygon points="35,38 42,45 38,50" fill="#fafaf9" opacity="0.5"/>
+</svg>

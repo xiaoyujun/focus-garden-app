@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="虚空之心"
+  data-badge-description="虚空的核心，统一了所有阴影的意志"
+  data-badge-price="800"
+  data-badge-rarity="legendary"
+  data-badge-category="hollow">
   <radialGradient id="voidGlow" cx="50%" cy="50%" r="50%">
     <stop offset="0%" style="stop-color:#000;stop-opacity:1"/>
     <stop offset="100%" style="stop-color:#4b5563;stop-opacity:0"/>

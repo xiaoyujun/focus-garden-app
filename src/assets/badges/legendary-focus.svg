@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="传奇专注"
+  data-badge-description="专注力的巅峰，传说中的存在，仅供真正的大师"
+  data-badge-price="1000"
+  data-badge-rarity="legendary"
+  data-badge-category="special">
   <defs>
     <linearGradient id="bgLegend" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#fcd34d"/>

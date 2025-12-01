@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="大师球"
+  data-badge-description="传说中的捕捉神器，百发百中"
+  data-badge-price="800"
+  data-badge-rarity="legendary"
+  data-badge-category="pokemon">
   <defs>
     <radialGradient id="ballShine" cx="30%" cy="30%" r="60%">
       <stop offset="0%" style="stop-color:#fff;stop-opacity:0.4"/>

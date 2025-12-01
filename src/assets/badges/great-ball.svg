@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="超级球"
+  data-badge-description="更高的捕捉率，更强的专注力"
+  data-badge-price="200"
+  data-badge-rarity="uncommon"
+  data-badge-category="pokemon">
   <defs>
     <radialGradient id="ballShine" cx="30%" cy="30%" r="60%">
       <stop offset="0%" style="stop-color:#fff;stop-opacity:0.4"/>

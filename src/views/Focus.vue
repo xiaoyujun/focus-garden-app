@@ -1,14 +1,9 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '../stores/gameStore'
-import { useAudioStore } from '../stores/audioStore'
-import { Play, Square, RotateCcw, Check, Star, Sparkles, CloudSun, Headphones, SkipBack, SkipForward } from 'lucide-vue-next'
-import AudioErrorDialog from '../components/AudioErrorDialog.vue'
+import { Play, Square, RotateCcw, Check, Star, Sparkles, CloudSun } from 'lucide-vue-next'
 
 const store = useAppStore()
-const audioStore = useAudioStore()
-const router = useRouter()
 
 // 状态
 const selectedSeed = ref(null)
@@ -40,14 +35,6 @@ const progress = computed(() => {
   const total = selectedSeed.value.minutes * 60
   return ((total - timeLeft.value) / total) * 100
 })
-
-// 听书迷你控件状态
-const miniAudioRef = ref(null)
-const audioLoading = ref(false)
-let audioSaveTimer = null
-
-const miniTrackName = computed(() => audioStore.currentTrack ? audioStore.currentTrack.name.replace(/\.[^/.]+$/, '') : '')
-const audioAvailable = computed(() => audioStore.hasPlaylist && !!audioStore.currentTrack)
 
 // 获取稀有度配置
 function getRarityConfig(id) {
@@ -156,172 +143,17 @@ function closeComplete() {
   earnedCrop.value = null
 }
 
-// 听书相关控制（番茄钟内的迷你入口）
-function ensureCurrentAudioIndex() {
-  if (!audioStore.currentTrack && audioStore.playlist.length > 0) {
-    const targetIndex = audioStore.currentIndex >= 0 ? audioStore.currentIndex : 0
-    audioStore.setCurrentIndex(targetIndex)
-  }
-}
-
-async function loadMiniTrack() {
-  if (!audioStore.currentTrack || !miniAudioRef.value) return
-
-  audioLoading.value = true
-  try {
-    const url = await audioStore.getCurrentTrackUrl()
-    if (url) {
-      miniAudioRef.value.src = url
-      miniAudioRef.value.volume = audioStore.volume
-      miniAudioRef.value.playbackRate = audioStore.playbackRate
-
-      const savedTime = audioStore.getSavedProgress(audioStore.currentTrack.name)
-      if (savedTime > 0) {
-        miniAudioRef.value.currentTime = savedTime
-      }
-
-      if (audioStore.isPlaying) {
-        await miniAudioRef.value.play()
-      }
-    }
-  } catch (e) {
-    console.error('迷你听书加载失败', e)
-    audioStore.notifyError(`迷你播放器加载失败：${e.message || e}`)
-  } finally {
-    audioLoading.value = false
-  }
-}
-
-async function toggleMiniPlay() {
-  // 如果没有播放列表但有保存的目录，先恢复
-  if (!audioStore.hasPlaylist && audioStore.hasSavedDirectory) {
-    await restoreAudio()
-    if (!audioStore.hasPlaylist) return
-  }
-  
-  ensureCurrentAudioIndex()
-  if (!audioStore.currentTrack || !miniAudioRef.value) return
-
-  if (!miniAudioRef.value.src) {
-    await loadMiniTrack()
-  }
-
-  if (audioStore.isPlaying) {
-    miniAudioRef.value.pause()
-    audioStore.isPlaying = false
-    audioStore.saveProgress()
-  } else {
-    try {
-      await miniAudioRef.value.play()
-      audioStore.isPlaying = true
-    } catch (e) {
-      await loadMiniTrack()
-      try {
-        await miniAudioRef.value.play()
-        audioStore.isPlaying = true
-      } catch (err) {
-        console.error('播放失败', err)
-        audioStore.notifyError(`播放失败：${err.message || err}`)
-      }
-    }
-  }
-}
-
-async function playNextAudio() {
-  if (!audioAvailable.value) return
-  audioStore.saveProgress()
-  audioStore.playNext()
-  audioStore.isPlaying = true
-  await loadMiniTrack()
-}
-
-async function playPrevAudio() {
-  if (!audioAvailable.value) return
-  audioStore.saveProgress()
-  audioStore.playPrevious()
-  audioStore.isPlaying = true
-  await loadMiniTrack()
-}
-
-async function restoreAudio() {
-  if (!audioStore.hasSavedDirectory || audioLoading.value) return
-  audioLoading.value = true
-  const result = await audioStore.restoreLastDirectory()
-  audioLoading.value = false
-
-  if (result.success && audioStore.playlist.length > 0) {
-    ensureCurrentAudioIndex()
-    await loadMiniTrack()
-  } else if (!result.success) {
-    const msg = result.error === 'no-native-cache'
-      ? '未找到可恢复的音频，请重新选择目录'
-      : (result.error || '恢复上次播放失败，请重新选择目录')
-    audioStore.notifyError(msg)
-  }
-}
-
-function openAudioPage() {
-  router.push('/audio')
-}
-
-function onAudioTimeUpdate() {
-  if (miniAudioRef.value) {
-    audioStore.currentTime = miniAudioRef.value.currentTime
-  }
-}
-
-function onAudioDurationChange() {
-  if (miniAudioRef.value) {
-    audioStore.duration = miniAudioRef.value.duration
-  }
-}
-
-async function onAudioEnded() {
-  audioStore.saveProgress()
-  audioStore.playNext()
-  await loadMiniTrack()
-}
-
-function onAudioError(e) {
-  console.error('音频播放错误', e)
-  audioStore.isPlaying = false
-  audioStore.notifyError('音频播放失败，请检查文件是否还在原位置')
-}
-
-watch(() => audioStore.currentIndex, async (newVal, oldVal) => {
-  if (newVal !== oldVal && newVal >= 0) {
-    await loadMiniTrack()
-  }
-})
-
 onMounted(() => {
   // 恢复专注计时（切屏/重进仍持续）
   syncFocusFromStore()
   if (isRunning.value) {
     startTick()
   }
-
-  if (audioStore.hasPlaylist) {
-    loadMiniTrack()
-  }
-
-  audioSaveTimer = setInterval(() => {
-    if (audioStore.isPlaying && audioStore.currentTrack) {
-      audioStore.saveProgress()
-    }
-  }, 30000)
 })
 
 // 清理定时器
 onUnmounted(() => {
   clearInterval(timer)
-  if (audioSaveTimer) {
-    clearInterval(audioSaveTimer)
-  }
-  if (miniAudioRef.value) {
-    audioStore.saveProgress()
-    miniAudioRef.value.pause()
-  }
 })
 </script>
 
@@ -355,90 +187,6 @@ onUnmounted(() => {
     </div>
 
     <main class="px-4 pb-24 max-w-md mx-auto">
-      <!-- 听书快捷入口 -->
-      <audio 
-        ref="miniAudioRef" 
-        class="hidden" 
-        @timeupdate="onAudioTimeUpdate"
-        @durationchange="onAudioDurationChange"
-        @ended="onAudioEnded"
-        @error="onAudioError"
-      />
-      <div class="mb-8 bg-white/70 rounded-2xl border border-farm-100 shadow-sm backdrop-blur-sm p-4">
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex items-center gap-3 min-w-0">
-            <div class="w-11 h-11 rounded-xl bg-nature-50 text-nature-600 flex items-center justify-center border border-nature-100">
-              <Headphones :size="22" />
-            </div>
-            <div class="min-w-0">
-              <p class="text-[11px] text-farm-400">听书随行</p>
-              <p class="text-sm font-bold text-farm-900 truncate">
-                {{ audioStore.currentTrack ? miniTrackName : (audioStore.hasSavedDirectory ? '恢复上次听书目录' : '未选择音频') }}
-              </p>
-              <p v-if="audioStore.currentTrack" class="text-[11px] text-farm-400 mt-0.5">
-                {{ audioStore.formattedCurrentTime }} / {{ audioStore.formattedDuration }}
-              </p>
-              <p v-else class="text-[11px] text-farm-400 mt-0.5">
-                {{ audioStore.hasSavedDirectory ? '可一键恢复后在此播放' : '先去听书页选择音频目录' }}
-              </p>
-            </div>
-          </div>
-          <button @click="openAudioPage" class="text-xs text-nature-600 underline decoration-1">
-            打开听书
-          </button>
-        </div>
-
-        <div class="flex items-center gap-3 mt-4">
-          <button 
-            @click="playPrevAudio"
-            :disabled="!audioAvailable"
-            class="w-11 h-11 rounded-full bg-farm-100 text-farm-600 flex items-center justify-center hover:bg-farm-200 transition-colors disabled:opacity-50"
-          >
-            <SkipBack :size="18" />
-          </button>
-          
-          <button 
-            @click="toggleMiniPlay"
-            :disabled="audioLoading"
-            class="w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-all disabled:opacity-60"
-            :class="audioStore.isPlaying ? 'bg-amber-500 shadow-amber-200' : 'bg-nature-500 shadow-nature-200'"
-          >
-            <div v-if="audioLoading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-            <Square v-else-if="audioStore.isPlaying" :size="22" fill="currentColor" />
-            <Play v-else :size="24" fill="currentColor" class="ml-1" />
-          </button>
-          
-          <button 
-            @click="playNextAudio"
-            :disabled="!audioAvailable"
-            class="w-11 h-11 rounded-full bg-farm-100 text-farm-600 flex items-center justify-center hover:bg-farm-200 transition-colors disabled:opacity-50"
-          >
-            <SkipForward :size="18" />
-          </button>
-
-          <button 
-            v-if="!audioStore.hasPlaylist && audioStore.hasSavedDirectory"
-            @click="restoreAudio"
-            class="flex-1 text-xs bg-nature-500 text-white px-3 py-2 rounded-xl hover:bg-nature-600 transition-colors disabled:opacity-60"
-            :disabled="audioLoading"
-          >
-            {{ audioLoading ? '正在恢复…' : '恢复上次听书' }}
-          </button>
-          <button 
-            v-else-if="!audioStore.hasPlaylist"
-            @click="openAudioPage"
-            class="flex-1 text-xs bg-farm-100 text-farm-700 px-3 py-2 rounded-xl hover:bg-farm-200 transition-colors"
-          >
-            去选择音频
-          </button>
-          <div v-else class="flex-1 text-right">
-            <span class="text-[11px] text-farm-400">列表 {{ audioStore.playlist.length }} 首</span>
-          </div>
-        </div>
-
-        <p v-if="audioLoading" class="text-[11px] text-farm-400 mt-2">正在加载音频...</p>
-      </div>
-
       <!-- 种子选择 -->
       <div class="grid grid-cols-4 gap-3 mb-10" v-if="!isRunning">
         <button 
@@ -495,7 +243,7 @@ onUnmounted(() => {
           <span 
             v-for="reason in currentBonus.reasons" 
             :key="reason"
-            class="text-xs bg-white text-amber-700 px-2.5 py-1 rounded-full shadow-sm border border-amber-100"
+            class="text-xs bg-white text-amber-700 px-2.5 py-0.5 rounded-full border border-amber-100"
           >
             {{ reason }}
           </span>
@@ -617,12 +365,6 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
-
-    <AudioErrorDialog 
-      :visible="audioStore.errorVisible" 
-      :message="audioStore.errorMessage" 
-      @close="audioStore.clearError()" 
-    />
   </div>
 </template>
 

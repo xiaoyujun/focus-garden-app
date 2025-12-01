@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="恶属性"
+  data-badge-description="暗夜中的猎手，狡黠的力量"
+  data-badge-price="200"
+  data-badge-rarity="rare"
+  data-badge-category="pokemon">
+  <defs>
+    <linearGradient id="bgDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#57534e"/>
+      <stop offset="100%" style="stop-color:#1c1917"/>
+    </linearGradient>
+    <radialGradient id="darkAura" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#44403c"/>
+      <stop offset="100%" style="stop-color:#0c0a09"/>
+    </radialGradient>
+  </defs>
+  
+  <!-- 深灰黑色背景 -->
+  <circle cx="50" cy="50" r="45" fill="url(#bgDark)" stroke="#292524" stroke-width="3"/>
+  
+  <!-- 新月图案 -->
+  <path d="M60 25 Q30 35 30 50 Q30 65 60 75 Q40 65 40 50 Q40 35 60 25" fill="#a8a29e"/>
+  
+  <!-- 邪恶之眼 -->
+  <ellipse cx="55" cy="50" rx="12" ry="8" fill="#dc2626"/>
+  <ellipse cx="58" cy="50" rx="5" ry="5" fill="#1c1917"/>
+  <circle cx="60" cy="48" r="2" fill="#fef2f2"/>
+  
+  <!-- 暗影粒子 -->
+  <circle cx="25" cy="35" r="3" fill="#78716c" opacity="0.6"/>
+  <circle cx="75" cy="65" r="4" fill="#78716c" opacity="0.5"/>
+  <circle cx="70" cy="30" r="2" fill="#78716c" opacity="0.4"/>
+</svg>

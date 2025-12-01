@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+  data-badge-name="地面属性"
+  data-badge-description="脚踏实地，大地的力量"
+  data-badge-price="120"
+  data-badge-rarity="uncommon"
+  data-badge-category="pokemon">
+  <defs>
+    <linearGradient id="bgGround" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fcd34d"/>
+      <stop offset="100%" style="stop-color:#a16207"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 棕黄色背景 -->
+  <circle cx="50" cy="50" r="45" fill="url(#bgGround)" stroke="#92400e" stroke-width="3"/>
+  
+  <!-- 地面/沙丘图案 -->
+  <path d="M15 65 Q30 50 50 55 Q70 60 85 50 L85 75 Q70 85 50 80 Q30 75 15 85 Z" fill="#fef3c7"/>
+  <path d="M20 55 Q35 45 50 50 Q65 55 80 45" stroke="#d97706" stroke-width="3" fill="none"/>
+  
+  <!-- 裂缝 -->
+  <path d="M40 35 L42 50 L38 65" stroke="#78350f" stroke-width="2" fill="none"/>
+  <path d="M60 30 L58 45 L62 60" stroke="#78350f" stroke-width="2" fill="none"/>
+</svg>
