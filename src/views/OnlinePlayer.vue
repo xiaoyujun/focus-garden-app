@@ -617,6 +617,12 @@ function toggleVideoMode() {
   audioStore.setVideoMode(next)
 }
 
+function openVideoInBrowser() {
+  if (!currentTrack.value?.bvid) return
+  const page = currentTrack.value.page ? `?p=${currentTrack.value.page}` : ''
+  window.open(`https://www.bilibili.com/video/${currentTrack.value.bvid}${page}`, '_blank')
+}
+
 // Watchers
 watch(activeTab, (newTab) => {
   if (newTab === 'recommend' && isLoggedIn.value && !recommendList.value.length) {
@@ -891,39 +897,6 @@ onMounted(() => {
         @remove-favorite="sourceStore.removeFavorite"
       />
 
-      <!-- Video Player -->
-      <div 
-        v-if="isVideoMode && currentTrack && videoPlayerUrl"
-        class="px-4 mt-6 animate-in fade-in duration-300"
-      >
-        <div class="rounded-2xl overflow-hidden shadow-xl border border-gray-200 bg-black">
-          <div class="flex items-center justify-between px-4 py-3 bg-black/70 text-white">
-            <div class="min-w-0">
-              <p class="text-sm font-semibold truncate">{{ currentTrack.title }}</p>
-              <p class="text-[11px] text-white/70 truncate">
-                {{ currentVideo?.owner?.name || 'B站视频' }}
-                <span v-if="currentTrack.page" class="ml-1">P{{ currentTrack.page }}</span>
-              </p>
-            </div>
-            <button 
-              @click="toggleVideoMode"
-              class="text-xs px-3 py-1 rounded-full bg-white/10 border border-white/20 hover:bg-white/20 transition-colors"
-            >
-              关闭视频
-            </button>
-          </div>
-          <div class="relative pt-[56.25%] bg-black">
-            <iframe 
-              class="absolute inset-0 w-full h-full"
-              :src="videoPlayerUrl"
-              allowfullscreen
-              allow="autoplay; fullscreen"
-              referrerpolicy="no-referrer"
-            ></iframe>
-          </div>
-        </div>
-      </div>
-
       <!-- Cache Clear Button (Global) -->
       <div v-if="activeTab !== 'search' && activeTab !== 'recommend'" class="px-4 mt-8">
          <button
@@ -941,6 +914,50 @@ onMounted(() => {
       </div>
 
     </main>
+
+    <!-- Video Overlay -->
+    <Transition name="fade">
+      <div 
+        v-if="isVideoMode && currentTrack && videoPlayerUrl"
+        class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-4 py-6"
+        @click.self="toggleVideoMode"
+      >
+        <div class="w-full max-w-4xl bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+          <div class="flex items-center justify-between px-4 py-3 bg-black/60 text-white">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold truncate">{{ currentTrack.title }}</p>
+              <p class="text-[11px] text-white/70 truncate">
+                {{ currentVideo?.owner?.name || 'B站视频' }}
+                <span v-if="currentTrack.page" class="ml-1">P{{ currentTrack.page }}</span>
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button 
+                @click.stop="openVideoInBrowser"
+                class="px-3 py-1 rounded-lg bg-white/10 border border-white/20 text-xs hover:bg-white/20 transition-colors"
+              >
+                浏览器打开
+              </button>
+              <button 
+                @click.stop="toggleVideoMode"
+                class="px-3 py-1 rounded-lg bg-white text-black text-xs font-semibold"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+          <div class="relative pt-[56.25%] bg-black">
+            <iframe 
+              class="absolute inset-0 w-full h-full"
+              :src="videoPlayerUrl"
+              allowfullscreen
+              allow="autoplay; fullscreen; encrypted-media"
+              referrerpolicy="no-referrer"
+            ></iframe>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Global Player Bar -->
     <PlayerBar 
