@@ -74,11 +74,18 @@ const store = useOnlineAudioStore()
 const audioRef = ref(null)
 const showMiniPlayer = computed(() => {
   // 在非 online 页面且有播放内容时显示迷你播放器
-  return route.path !== '/online' && store.hasTrack
+  return route.path !== '/online' && store.hasTrack && !store.videoMode
 })
 
 // 当前加载版本号
 let loadVersion = 0
+
+function resetAudioElement() {
+  if (!audioRef.value) return
+  audioRef.value.pause()
+  audioRef.value.removeAttribute('src')
+  audioRef.value.load()
+}
 
 // 监听 audio 元素挂载
 onMounted(() => {
@@ -108,10 +115,29 @@ watch(() => store.currentIndex, async (newIndex, oldIndex) => {
   }
   
   if (newIndex >= store.currentPlaylist.length) return
+  if (store.videoMode) {
+    loadVersion++
+    resetAudioElement()
+    store.isLoading = false
+    store.isPlaying = false
+    return
+  }
   // oldIndex 为 undefined 时是初始化，不自动播放（恢复上次状态）
   if (oldIndex === undefined) return
   
   await loadAndPlayTrack(newIndex)
+})
+
+// 视频模式切换时同步音频状态
+watch(() => store.videoMode, async (enabled) => {
+  if (!audioRef.value) return
+  loadVersion++
+  resetAudioElement()
+  store.isLoading = false
+  store.isPlaying = false
+  if (!enabled && store.currentIndex >= 0 && store.currentIndex < store.currentPlaylist.length) {
+    await loadAndPlayTrack(store.currentIndex)
+  }
 })
 
 // 加载并播放
@@ -121,6 +147,9 @@ async function loadAndPlayTrack(index) {
   store.saveProgress(true)
   store.isLoading = true
   store.error = ''
+  // 切换曲目时先重置进度显示，避免上一首的进度条残留
+  store.currentTime = 0
+  store.duration = 0
   
   // 先重置音频
   if (audioRef.value) {
@@ -134,7 +163,7 @@ async function loadAndPlayTrack(index) {
     if (!track) return
     
     // 获取音频URL
-    const audioUrls = await getAudioUrls(track.bvid, track.cid)
+    const audioUrls = await getAudioUrls(track.bvid, track.cid, { mode: store.parseMode })
     
     if (currentVersion !== loadVersion) return
     
@@ -193,7 +222,8 @@ async function tryPlayUrl(url, track, version) {
       finalUrl = url // fallback
     }
   } else {
-    finalUrl = `/api/bili-proxy?url=${encodeURIComponent(url)}`
+    const isAlreadyProxied = url.startsWith('/api/bili-proxy')
+    finalUrl = isAlreadyProxied ? url : `/api/bili-proxy?url=${encodeURIComponent(url)}`
   }
   
   // 检查是否已取消

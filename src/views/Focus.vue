@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '../stores/gameStore'
 import { Play, Square, RotateCcw, Check, Star, Sparkles, CloudSun } from 'lucide-vue-next'
+import { ensureNotificationPermission, startFocusNotification, updateFocusNotification, stopFocusNotification, updateWidget, onFocusAction } from '../services/notificationService'
 
 const store = useAppStore()
 
@@ -13,6 +14,8 @@ const isRunning = ref(false)
 const showComplete = ref(false)
 const earnedCrop = ref(null) // 记录本次获得的作物
 let timer = null
+let lastWidgetUpdateAt = 0
+let removeFocusActionListener = null
 
 // 周期信息
 const weeklyPattern = computed(() => store.getWeeklyPattern())
@@ -50,6 +53,7 @@ function syncFocusFromStore() {
   if (!store.currentFocus) {
     isRunning.value = false
     timeLeft.value = getSelectedSeedMinutes()
+    syncNativeState()
     return
   }
 
@@ -63,6 +67,7 @@ function syncFocusFromStore() {
   const remaining = store.getCurrentFocusRemainingSeconds()
   timeLeft.value = remaining
   isRunning.value = store.currentFocus.status === 'running' && remaining > 0
+  syncNativeState()
 
   if (remaining <= 0 && store.currentFocus.status === 'running') {
     completeTimer()
@@ -89,28 +94,31 @@ function selectSeed(seed) {
 function startTimer() {
   if (!selectedSeed.value) return
 
-  // 已暂停则继续
+  // ?????
   if (store.currentFocus && store.currentFocus.status === 'paused') {
     store.resumeFocus()
     startTick()
+    syncNativeState()
     return
   }
 
-  // 已在运行则忽略重复点击
+  // ????????
   if (store.currentFocus && store.currentFocus.status === 'running') {
     return
   }
 
   if (!store.startFocus(selectedSeed.value.id, note.value)) return
   startTick()
+  syncNativeState()
 }
 
-// 暂停计时
+// ????
 function pauseTimer() {
   store.pauseFocus()
   clearInterval(timer)
   isRunning.value = false
   syncFocusFromStore()
+  syncNativeState()
 }
 
 // 重置
@@ -118,6 +126,7 @@ function resetTimer() {
   clearInterval(timer)
   isRunning.value = false
   store.cancelFocus()
+  syncNativeState(true)
   if (selectedSeed.value) {
     timeLeft.value = selectedSeed.value.minutes * 60
   }
@@ -128,6 +137,7 @@ function completeTimer() {
   clearInterval(timer)
   isRunning.value = false
   store.completeFocus()
+  syncNativeState(true)
   
   // 获取刚刚生成的作物
   earnedCrop.value = store.focusRecords[store.focusRecords.length - 1]
@@ -149,12 +159,55 @@ onMounted(() => {
   if (isRunning.value) {
     startTick()
   }
+  ensureNotificationPermission()
+  removeFocusActionListener = onFocusAction(({ actionType }) => {
+    if (actionType === 'pause') {
+      pauseTimer()
+    } else if (actionType === 'resume') {
+      startTimer()
+    } else if (actionType === 'stop') {
+      resetTimer()
+    }
+  })
 })
 
 // 清理定时器
 onUnmounted(() => {
   clearInterval(timer)
+  if (removeFocusActionListener) {
+    removeFocusActionListener()
+    removeFocusActionListener = null
+  }
 })
+
+// 閫氳繃 Capacitor 鍏叡鎺ュ彛锛屽簲鐢ㄦ姢锷ㄧ櫥褰曞拰灞忓箷/灏忕獥浣撴洿鏂?
+async function syncNativeState(forceStop = false) {
+  const payload = {
+    title: selectedSeed.value ? selectedSeed.value.name : '暂无专注',
+    remainingSeconds: timeLeft.value || 0,
+    isRunning: isRunning.value,
+    progress: progress.value
+  }
+
+  if (forceStop || (!isRunning.value && (!selectedSeed.value || timeLeft.value <= 0))) {
+    await stopFocusNotification()
+  } else if (store.currentFocus && isRunning.value) {
+    await startFocusNotification(payload)
+  } else if (store.currentFocus) {
+    await updateFocusNotification(payload)
+  }
+
+  const now = Date.now()
+  if (now - lastWidgetUpdateAt > 15000 || forceStop) {
+    lastWidgetUpdateAt = now
+    await updateWidget(forceStop ? {} : {
+      title: payload.title,
+      remainingSeconds: payload.remainingSeconds,
+      progress: payload.progress,
+      isRunning: payload.isRunning
+    })
+  }
+}
 </script>
 
 <template>

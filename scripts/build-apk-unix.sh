@@ -32,7 +32,6 @@ VERSION=$(node -p "require('../package.json').version")
 APK_PATH=$(find . -name "*.apk" -path "*/debug/*" | head -1)
 echo "APK location: $APK_PATH"
 
-# Copy to APK folder
 mkdir -p "$PROJECT_DIR/APK"
 cp "$APK_PATH" "$PROJECT_DIR/APK/focus-garden-v${VERSION}.apk"
 echo "Copied to: APK/focus-garden-v${VERSION}.apk"

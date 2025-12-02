@@ -11,6 +11,7 @@ const PROGRESS_STORAGE_KEY = 'bilibili-audio-progress'
 const PROGRESS_SAVE_INTERVAL = 5000
 const isNative = Capacitor.isNativePlatform()
 let preferencesPromise = null
+const DEFAULT_PARSE_MODE = 'official'
 
 export const useOnlineAudioStore = defineStore('onlineAudio', () => {
   // ===== 核心状态 =====
@@ -25,6 +26,8 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
   const volume = ref(1)                 // 音量
   const playbackRate = ref(1)           // 播放速度
   const error = ref('')                 // 错误信息
+  const parseMode = ref(DEFAULT_PARSE_MODE) // 解析模式：official | official-hosted | compat
+  const videoMode = ref(false)          // 视频模式：开启后使用官方播放器展示画面
   
   // 进度记忆
   const progressMap = ref({})
@@ -76,6 +79,8 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
         const parsed = JSON.parse(data)
         volume.value = parsed.volume ?? 1
         playbackRate.value = parsed.playbackRate ?? 1
+        parseMode.value = parsed.parseMode || DEFAULT_PARSE_MODE
+        videoMode.value = parsed.videoMode || false
         // 恢复播放状态（但不自动播放）
         if (parsed.currentVideo) {
           currentVideo.value = parsed.currentVideo
@@ -105,6 +110,8 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
             const parsed = JSON.parse(stateRes.value)
             volume.value = parsed.volume ?? volume.value
             playbackRate.value = parsed.playbackRate ?? playbackRate.value
+            parseMode.value = parsed.parseMode || parseMode.value
+            videoMode.value = parsed.videoMode || videoMode.value
             if (parsed.currentVideo) {
               currentVideo.value = parsed.currentVideo
               currentPlaylist.value = parsed.currentPlaylist || []
@@ -138,6 +145,8 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
     const data = {
       volume: volume.value,
       playbackRate: playbackRate.value,
+      parseMode: parseMode.value,
+      videoMode: videoMode.value,
       currentVideo: currentVideo.value,
       currentPlaylist: currentPlaylist.value,
       currentIndex: currentIndex.value
@@ -150,7 +159,7 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
   }
 
   // 监听变化自动保存
-  watch([volume, playbackRate, currentVideo, currentPlaylist, currentIndex], saveToStorage, { deep: true })
+  watch([volume, playbackRate, parseMode, videoMode, currentVideo, currentPlaylist, currentIndex], saveToStorage, { deep: true })
 
   // ===== 进度记忆 =====
   /**
@@ -232,6 +241,7 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
 
   // 播放/暂停
   function togglePlay() {
+    if (videoMode.value) return
     if (!audioElement.value) return
     
     if (isPlaying.value) {
@@ -247,6 +257,7 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
   }
 
   function play() {
+    if (videoMode.value) return
     if (!audioElement.value) return
     audioElement.value.play().then(() => {
       isPlaying.value = true
@@ -258,6 +269,7 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
   }
 
   function pause() {
+    if (videoMode.value) return
     if (!audioElement.value) return
     audioElement.value.pause()
     isPlaying.value = false
@@ -312,6 +324,26 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
     const idx = playbackRates.indexOf(playbackRate.value)
     const newRate = playbackRates[(idx + 1) % playbackRates.length]
     setPlaybackRate(newRate)
+  }
+
+  // 设置解析模式
+  function setParseMode(mode) {
+    parseMode.value = mode || DEFAULT_PARSE_MODE
+  }
+  function setVideoMode(enabled) {
+    videoMode.value = !!enabled
+  }
+
+  // 强制重新加载当前曲目（用于解析模式切换等场景）
+  function reloadCurrentTrack() {
+    const idx = currentIndex.value
+    if (idx < 0 || !currentPlaylist.value.length) return
+    const listCopy = [...currentPlaylist.value]
+    currentIndex.value = -1
+    setTimeout(() => {
+      currentPlaylist.value = listCopy
+      currentIndex.value = Math.min(idx, currentPlaylist.value.length - 1)
+    }, 0)
   }
 
   // 更新 Media Session（系统媒体控制）
@@ -371,6 +403,16 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
 
   // 应用生命周期监听，后台时强制落盘
   function setupLifecycleListeners() {
+    // 浏览器/小程序端在关闭或切后台前强制持久化，避免大退后进度丢失
+    if (typeof window !== 'undefined') {
+      const handleUnload = () => {
+        saveProgress(true)
+        saveToStorage()
+      }
+      window.addEventListener('pagehide', handleUnload)
+      window.addEventListener('beforeunload', handleUnload)
+    }
+
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
@@ -412,6 +454,8 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
     playbackRate,
     error,
     progressMap,
+    parseMode,
+    videoMode,
     
     // 计算属性
     currentTrack,
@@ -436,10 +480,13 @@ export const useOnlineAudioStore = defineStore('onlineAudio', () => {
     setVolume,
     setPlaybackRate,
     cyclePlaybackRate,
+    setParseMode,
+    setVideoMode,
     saveProgress,
     getSavedProgress,
     clearTrackProgress,
     updateMediaSession,
+    reloadCurrentTrack,
     clearPlayback,
     clearCache,
     formatTime

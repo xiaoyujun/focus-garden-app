@@ -386,29 +386,54 @@ export async function getBestAudioUrl(bvid, cid) {
 /**
  * 获取音频 URL 列表（包含备用地址）
  */
-export async function getAudioUrls(bvid, cid) {
+export async function getAudioUrls(bvid, cid, options = {}) {
+  const { mode = 'official' } = typeof options === 'string' ? { mode: options } : options
   ensureLogin()
   const urls = []
   const playInfo = await getPlayUrl(bvid, cid)
+  const preferProgressive = mode === 'compat'
 
-  if (playInfo.audios?.length) {
-    const sortedAudios = [...playInfo.audios].sort((a, b) => b.bandwidth - a.bandwidth)
-    for (const audio of sortedAudios) {
-      if (audio.url) urls.push(audio.url)
-      if (audio.backupUrl?.length) {
-        urls.push(...audio.backupUrl)
+  const pushDashAudios = () => {
+    if (playInfo.audios?.length) {
+      const sortedAudios = [...playInfo.audios].sort((a, b) => b.bandwidth - a.bandwidth)
+      for (const audio of sortedAudios) {
+        if (audio.url) urls.push(audio.url)
+        if (audio.backupUrl?.length) {
+          urls.push(...audio.backupUrl)
+        }
       }
     }
   }
 
-  if (playInfo.durl?.length) {
-    for (const d of playInfo.durl) {
-      if (d.url) urls.push(d.url)
-      if (d.backupUrl?.length) urls.push(...d.backupUrl)
+  const pushProgressive = () => {
+    if (playInfo.durl?.length) {
+      for (const d of playInfo.durl) {
+        if (d.url) urls.push(d.url)
+        if (d.backupUrl?.length) urls.push(...d.backupUrl)
+      }
     }
   }
 
-  return [...new Set(urls)]
+  if (preferProgressive) {
+    pushProgressive()
+    pushDashAudios()
+  } else {
+    pushDashAudios()
+    pushProgressive()
+  }
+
+  let uniqueUrls = [...new Set(urls)]
+
+  // 官方源托管：在 Web 端预先经过后端代理，提升跨域/Referer 兼容性
+  if (mode === 'official-hosted' && !isNative) {
+    uniqueUrls = uniqueUrls.map(url => {
+      return url.startsWith('/api/bili-proxy')
+        ? url
+        : `/api/bili-proxy?url=${encodeURIComponent(url)}`
+    })
+  }
+
+  return uniqueUrls
 }
 
 /**
@@ -494,11 +519,77 @@ export async function getVideoSeries(bvid) {
 }
 
 /**
- * 搜索B站视频
+ * B站内容分区ID映射（适合听的内容）
+ */
+export const AUDIO_FRIENDLY_ZONES = {
+  // 有声书 & 故事类
+  audiobook: {
+    name: '有声书/故事',
+    tids: [247, 244, 71, 137],  // 电台(247)、翻唱(244)、综艺(71)、配音(137)
+    keywords: ['有声小说', '有声书', '睡前故事', '广播剧', '配音', '朗读'],
+    preferLong: true  // 偏好长视频
+  },
+  // 知识类
+  knowledge: {
+    name: '知识科普',
+    tids: [201, 124, 228, 207, 208, 209],  // 科学科普、社科人文、人文历史、财经商业、校园学习、职业职场
+    keywords: ['科普', '知识', '讲解', '课程', '教程'],
+    preferLong: true
+  },
+  // ASMR
+  asmr: {
+    name: 'ASMR助眠',
+    tids: [254],  // ASMR分区
+    keywords: ['ASMR', '助眠', '白噪音', '放松', '耳音'],
+    preferLong: true
+  },
+  // 音乐
+  music: {
+    name: '音乐',
+    tids: [3, 29, 28, 59, 31],  // 音乐主区、音乐综合、原创音乐、演奏、翻唱
+    keywords: ['音乐', '歌曲', '翻唱', '纯音乐'],
+    preferLong: false
+  },
+  // 播客/脱口秀
+  podcast: {
+    name: '播客/谈话',
+    tids: [241, 21, 182],  // 娱乐杂谈、日常、影视杂谈
+    keywords: ['播客', '脱口秀', '聊天', '访谈', '电台'],
+    preferLong: true
+  }
+}
+
+/**
+ * 解析时长字符串为秒数
+ */
+function parseDuration(durationStr) {
+  if (!durationStr) return 0
+  if (typeof durationStr === 'number') return durationStr
+  
+  const parts = String(durationStr).split(':').map(Number)
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2]
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1]
+  }
+  return parseInt(durationStr) || 0
+}
+
+/**
+ * 搜索B站视频（增强版，支持分区筛选）
+ * @param {string} keyword - 搜索关键词
+ * @param {object} options - 搜索选项
+ * @param {string} options.order - 排序方式
+ * @param {number} options.duration - 时长筛选 (0:不限 1:<10分钟 2:10-30分钟 3:30-60分钟 4:>60分钟)
+ * @param {number} options.page - 页码
+ * @param {string} options.tids - 分区ID，多个用逗号分隔
+ * @param {string} options.zone - 内容分区预设（audiobook/knowledge/asmr/music/podcast）
  */
 export async function searchVideos(keyword, options = {}) {
   try {
-    const { order = '', duration = 0, page = 1 } = options
+    const { order = '', duration = 0, page = 1, tids = '', zone = '' } = options
+    
+    // 构建搜索参数
     const params = new URLSearchParams({
       keyword,
       search_type: 'video',
@@ -506,6 +597,17 @@ export async function searchVideos(keyword, options = {}) {
       order: order || 'totalrank',
       duration
     })
+    
+    // 如果指定了分区预设，使用对应的分区ID
+    let effectiveTids = tids
+    if (zone && AUDIO_FRIENDLY_ZONES[zone]) {
+      effectiveTids = AUDIO_FRIENDLY_ZONES[zone].tids.join(',')
+    }
+    
+    // 添加分区筛选（tids参数）
+    if (effectiveTids) {
+      params.set('tids', effectiveTids)
+    }
 
     const data = await fetchApi(`/x/web-interface/search/type?${params}`, {
       isSearch: true
@@ -515,21 +617,36 @@ export async function searchVideos(keyword, options = {}) {
       throw new Error(data.message || '搜索失败')
     }
 
+    // 结果后处理：根据分区预设进行智能排序/筛选
+    let results = (data.data?.result || []).map(v => ({
+      bvid: v.bvid,
+      aid: v.aid,
+      title: (v.title || '').replace(/<[^>]+>/g, ''),
+      cover: normalizeCover(v.pic),
+      duration: v.duration,
+      durationSeconds: parseDuration(v.duration),
+      author: v.author,
+      mid: v.mid,
+      play: v.play,
+      description: v.description,
+      typeid: v.typeid  // 保留分区ID用于后续筛选
+    }))
+    
+    // 如果选择了偏好长视频的分区，优先显示长视频
+    if (zone && AUDIO_FRIENDLY_ZONES[zone]?.preferLong) {
+      results = results.sort((a, b) => {
+        // 优先显示超过10分钟的视频
+        const aLong = a.durationSeconds >= 600 ? 1 : 0
+        const bLong = b.durationSeconds >= 600 ? 1 : 0
+        return bLong - aLong
+      })
+    }
+
     return {
       total: data.data?.numResults || 0,
       page: data.data?.page || 1,
       pageSize: data.data?.pagesize || 20,
-      results: (data.data?.result || []).map(v => ({
-        bvid: v.bvid,
-        aid: v.aid,
-        title: (v.title || '').replace(/<[^>]+>/g, ''),
-        cover: normalizeCover(v.pic),
-        duration: v.duration,
-        author: v.author,
-        mid: v.mid,
-        play: v.play,
-        description: v.description
-      }))
+      results
     }
   } catch (error) {
     console.error('B站搜索失败:', error)
@@ -920,17 +1037,6 @@ export async function getFollowingVideos(page = 1, pageSize = 20) {
   }
 }
 
-function parseDuration(text) {
-  if (!text) return 0
-  const parts = text.split(':').map(Number)
-  if (parts.length === 2) {
-    return parts[0] * 60 + parts[1]
-  } else if (parts.length === 3) {
-    return parts[0] * 3600 + parts[1] * 60 + parts[2]
-  }
-  return 0
-}
-
 function parseCount(text) {
   if (typeof text === 'number') return text
   if (!text) return 0
@@ -938,6 +1044,107 @@ function parseCount(text) {
     return Math.round(parseFloat(text) * 10000)
   }
   return parseInt(text, 10) || 0
+}
+
+/**
+ * 获取分区热门排行榜
+ * @param {number} tid - 分区ID
+ * @param {number} page - 页码
+ * @param {number} pageSize - 每页数量
+ */
+export async function getZoneRanking(tid, page = 1, pageSize = 20) {
+  try {
+    const params = new URLSearchParams({
+      rid: tid,
+      pn: page,
+      ps: pageSize
+    })
+
+    const data = await fetchApi(`/x/web-interface/dynamic/region?${params}`, {
+      skipLogin: true,
+      useCache: true,
+      cacheKey: `zone:ranking:${tid}:${page}`,
+      cacheTtl: 1000 * 60 * 10  // 缓存10分钟
+    })
+
+    if (data.code !== 0) {
+      throw new Error(data.message || '获取分区排行失败')
+    }
+
+    return {
+      list: (data.data?.archives || []).map(v => ({
+        bvid: v.bvid,
+        aid: v.aid,
+        title: v.title,
+        cover: normalizeCover(v.pic),
+        duration: v.duration,
+        author: v.owner?.name || '',
+        mid: v.owner?.mid || 0,
+        face: v.owner?.face || '',
+        play: v.stat?.view || 0,
+        danmaku: v.stat?.danmaku || 0,
+        pubdate: v.pubdate,
+        description: v.desc,
+        typeid: v.tid
+      })),
+      hasMore: (data.data?.archives || []).length >= pageSize
+    }
+  } catch (error) {
+    console.error('获取分区排行失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 获取指定分区预设的热门内容
+ * @param {string} zone - 分区预设（audiobook/knowledge/asmr/music/podcast）
+ * @param {number} page - 页码
+ */
+export async function getZoneHotVideos(zone, page = 1) {
+  if (!AUDIO_FRIENDLY_ZONES[zone]) {
+    throw new Error('无效的分区预设')
+  }
+  
+  const zoneConfig = AUDIO_FRIENDLY_ZONES[zone]
+  const allResults = []
+  
+  // 从每个子分区获取热门内容
+  for (const tid of zoneConfig.tids.slice(0, 3)) {  // 最多取3个分区避免请求过多
+    try {
+      const result = await getZoneRanking(tid, page, 10)
+      allResults.push(...result.list)
+    } catch (e) {
+      console.warn(`获取分区 ${tid} 失败:`, e)
+    }
+  }
+  
+  // 去重并排序（按播放量）
+  const uniqueMap = new Map()
+  allResults.forEach(v => {
+    if (!uniqueMap.has(v.bvid)) {
+      uniqueMap.set(v.bvid, v)
+    }
+  })
+  
+  let results = Array.from(uniqueMap.values())
+  
+  // 如果偏好长视频，优先显示长视频
+  if (zoneConfig.preferLong) {
+    results = results.sort((a, b) => {
+      const aLong = a.duration >= 600 ? 1 : 0
+      const bLong = b.duration >= 600 ? 1 : 0
+      if (aLong !== bLong) return bLong - aLong
+      return b.play - a.play
+    })
+  } else {
+    results.sort((a, b) => b.play - a.play)
+  }
+  
+  return {
+    list: results.slice(0, 20),
+    hasMore: results.length > 20,
+    zoneName: zoneConfig.name
+  }
 }
 
 export default {
@@ -956,6 +1163,9 @@ export default {
   getRecommendVideos,
   getPopularVideos,
   getFollowingVideos,
+  getZoneRanking,
+  getZoneHotVideos,
   QUALITY_MAP,
-  AUDIO_QUALITY_MAP
+  AUDIO_QUALITY_MAP,
+  AUDIO_FRIENDLY_ZONES
 }
