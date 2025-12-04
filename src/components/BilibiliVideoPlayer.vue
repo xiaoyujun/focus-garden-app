@@ -30,8 +30,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'quality-change', 'ended', 'error'])
 
 const isNative = Capacitor.isNativePlatform()
-const useServerProxy = import.meta.env.VITE_FORCE_SERVER_PROXY === 'true' ||
-  (import.meta.env.DEV && import.meta.env.VITE_USE_SERVER_PROXY !== 'false')
+// Web 端必须走服务器代理（CORS 限制），只有原生端可以直连
 
 // ===== Refs =====
 const videoRef = ref(null)
@@ -94,22 +93,19 @@ const REMOTE_PROXY_URL = import.meta.env.VITE_BILI_PROXY_URL || ''
 function getProxyUrl(url) {
   if (!url) return ''
   
+  // 优先使用远程代理（如果配置了）
   if (REMOTE_PROXY_URL) {
     return `${REMOTE_PROXY_URL}${encodeURIComponent(url)}`
   }
 
   if (isNative) {
-    // 没有代理时尝试直连，可能因为防盗链失败
+    // 原生端没有代理时尝试直连，可能因为防盗链失败
     console.warn('[视频播放] 原生平台未配置远程代理，可能无法播放视频')
     return url
   }
   
-  if (useServerProxy) {
-    return `/api/bili-proxy?url=${encodeURIComponent(url)}`
-  }
-
-  console.warn('[视频播放] 未配置 Web 代理，直接使用原始地址，可能因防盗链被拒绝')
-  return url
+  // Web 端走服务器代理
+  return `/api/bili-proxy?url=${encodeURIComponent(url)}`
 }
 
 function formatTime(seconds) {

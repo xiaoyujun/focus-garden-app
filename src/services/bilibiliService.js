@@ -8,8 +8,7 @@ import { getAuthCookies, isLoggedIn } from './bilibiliAuth'
 import { httpGet } from './httpService'
 
 const isNative = Capacitor.isNativePlatform()
-const useServerProxy = import.meta.env.VITE_FORCE_SERVER_PROXY === 'true' ||
-  (import.meta.env.DEV && import.meta.env.VITE_USE_SERVER_PROXY !== 'false')
+// Web 端必须走服务器代理（CORS 限制），只有原生端可以直连
 
 // 通用 headers 与缓存配置
 const UA =
@@ -94,7 +93,8 @@ function buildHeaders(cookies) {
     Origin: ORIGIN
   }
   if (cookies) {
-    headers[useServerProxy ? 'X-Bilibili-Cookie' : 'Cookie'] = cookies
+    // Web 端通过自定义头传递 Cookie 给代理服务器
+    headers['X-Bilibili-Cookie'] = cookies
   }
   return headers
 }
@@ -140,13 +140,11 @@ async function fetchApi(path, options = {}) {
       })
     }
 
-    const url = useServerProxy
-      ? `${isSearch ? '/api/bili-search' : '/api/bili'}${path}`
-      : `https://api.bilibili.com${path}`
+    // Web 端走代理
+    const url = `${isSearch ? '/api/bili-search' : '/api/bili'}${path}`
     const response = await fetch(url, {
       headers: requestHeaders,
       credentials: 'include',
-      mode: useServerProxy ? 'same-origin' : 'cors',
       signal
     })
 

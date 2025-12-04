@@ -7,8 +7,7 @@ import { httpGet } from './httpService'
 import { useUserStore, onUserSwitched, onUserRemoved } from '../stores/userStore'
 
 const isNative = Capacitor.isNativePlatform()
-const useServerProxy = import.meta.env.VITE_FORCE_SERVER_PROXY === 'true' ||
-  (import.meta.env.DEV && import.meta.env.VITE_USE_SERVER_PROXY !== 'false')
+// Web 端必须走服务器代理（CORS 限制），只有原生端可以直连
 const SESSION_STORAGE_KEY = 'bilibili-auth-sessions'
 const DEFAULT_EXPIRE_DAYS = 30
 
@@ -76,17 +75,12 @@ function syncActiveSession(userId = getActiveUserId()) {
 
 function buildRequestHeaders(cookies) {
   if (!cookies) return {}
-  return useServerProxy ? { 'X-Bilibili-Cookie': cookies } : { 'Cookie': cookies }
+  // Web 端通过自定义头传递 Cookie 给代理服务器
+  return { 'X-Bilibili-Cookie': cookies }
 }
 
 function buildFetchOptions(headers = {}) {
-  const options = { headers }
-  if (!useServerProxy && !isNative) {
-    // 生产环境直连时允许携带跨域凭证，避免走云端代理
-    options.credentials = 'include'
-    options.mode = 'cors'
-  }
-  return options
+  return { headers }
 }
 
 function saveSession(userId, session) {
@@ -136,10 +130,8 @@ function getApiUrl(path) {
   if (isNative) {
     return `https://passport.bilibili.com${path}`
   }
-  if (useServerProxy) {
-    return `/api/passport${path}`
-  }
-  return `https://passport.bilibili.com${path}`
+  // Web 端走代理
+  return `/api/passport${path}`
 }
 
 /**
@@ -149,10 +141,8 @@ function getMainApiUrl(path) {
   if (isNative) {
     return `https://api.bilibili.com${path}`
   }
-  if (useServerProxy) {
-    return `/api/bili${path}`
-  }
-  return `https://api.bilibili.com${path}`
+  // Web 端走代理
+  return `/api/bili${path}`
 }
 
 /**
