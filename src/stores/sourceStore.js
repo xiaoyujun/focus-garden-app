@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
+import { useUserStore, onUserSwitched, onUserRemoved } from './userStore'
 
 const SOURCE_STORAGE_KEY = 'platform-source-data'
 
@@ -11,7 +12,7 @@ const PLATFORM_SOURCES = [
     baseUrl: 'https://www.bilibili.com',
     enabled: true,
     icon: '📺',
-    description: '搜索B站有声书、音乐、播客等内容'
+    description: '搜索B站视频并解析播放信息'
   },
   {
     id: 'ximalaya',
@@ -25,6 +26,10 @@ const PLATFORM_SOURCES = [
 ]
 
 export const useSourceStore = defineStore('source', () => {
+  const userStore = useUserStore()
+  let isHydrating = false
+  const getKey = (baseKey = SOURCE_STORAGE_KEY, userId = userStore.activeUserId) => userStore.getStorageKey(baseKey, userId)
+
   // ===== 状态 =====
   const sources = ref([...PLATFORM_SOURCES])
   const currentSourceId = ref(PLATFORM_SOURCES[0].id)
@@ -32,15 +37,26 @@ export const useSourceStore = defineStore('source', () => {
   const favorites = ref([])
   const playHistory = ref([])
 
+  function resetState() {
+    sources.value = [...PLATFORM_SOURCES]
+    currentSourceId.value = PLATFORM_SOURCES[0].id
+    searchHistory.value = []
+    favorites.value = []
+    playHistory.value = []
+  }
+
   // ===== 计算属性 =====
   const enabledSources = computed(() => sources.value.filter(s => s.enabled !== false))
   const currentSource = computed(() => enabledSources.value.find(s => s.id === currentSourceId.value) || enabledSources.value[0])
   const platformSources = computed(() => enabledSources.value)
 
   // ===== 本地存储 =====
-  function loadFromStorage() {
+  function loadFromStorage(targetUserId = userStore.activeUserId) {
+    if (typeof localStorage === 'undefined') return
+    isHydrating = true
+    resetState()
     try {
-      const data = localStorage.getItem(SOURCE_STORAGE_KEY)
+      const data = localStorage.getItem(getKey(SOURCE_STORAGE_KEY, targetUserId))
       if (data) {
         const parsed = JSON.parse(data)
         const userSources = parsed.sources || []
@@ -61,10 +77,13 @@ export const useSourceStore = defineStore('source', () => {
       }
     } catch (e) {
       console.error('加载平台源失败:', e)
+    } finally {
+      isHydrating = false
     }
   }
 
   function saveToStorage() {
+    if (typeof localStorage === 'undefined' || isHydrating) return
     try {
       const data = {
         sources: sources.value,
@@ -73,13 +92,28 @@ export const useSourceStore = defineStore('source', () => {
         favorites: favorites.value,
         playHistory: playHistory.value
       }
-      localStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(data))
+      localStorage.setItem(getKey(), JSON.stringify(data))
     } catch (e) {
       console.error('保存平台源失败:', e)
     }
   }
 
-  watch([sources, currentSourceId, searchHistory, favorites, playHistory], saveToStorage, { deep: true })
+  watch([sources, currentSourceId, searchHistory, favorites, playHistory], () => {
+    if (isHydrating) return
+    saveToStorage()
+  }, { deep: true })
+
+  function removeDataFor(userId) {
+    localStorage.removeItem(getKey(SOURCE_STORAGE_KEY, userId))
+  }
+
+  onUserSwitched(() => {
+    loadFromStorage()
+  })
+
+  onUserRemoved((userId) => {
+    removeDataFor(userId)
+  })
 
   // ===== 源管理 =====
   function toggleSource(id) {
@@ -155,6 +189,9 @@ export const useSourceStore = defineStore('source', () => {
     searchHistory,
     favorites,
     playHistory,
+    resetState,
+    loadFromStorage,
+    removeDataFor,
 
     enabledSources,
     currentSource,

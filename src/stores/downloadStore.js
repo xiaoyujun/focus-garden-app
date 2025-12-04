@@ -6,10 +6,14 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { parseUrl, downloadItem, downloadBatch, PRESET_SOURCES } from '../services/downloadService'
+import { useUserStore, onUserSwitched, onUserRemoved } from './userStore'
 
 const DOWNLOAD_STORAGE_KEY = 'download-manager-data'
 
 export const useDownloadStore = defineStore('download', () => {
+  const userStore = useUserStore()
+  let isHydrating = false
+  const getKey = (userId = userStore.activeUserId) => userStore.getStorageKey(DOWNLOAD_STORAGE_KEY, userId)
   // ===== 状态 =====
   const tasks = ref([])              // 下载任务列表
   const downloadHistory = ref([])    // 下载历史
@@ -22,6 +26,19 @@ export const useDownloadStore = defineStore('download', () => {
     currentItem: null
   })
 
+  function resetState() {
+    tasks.value = []
+    downloadHistory.value = []
+    parsedContent.value = null
+    isParsing.value = false
+    isDownloading.value = false
+    currentProgress.value = {
+      index: 0,
+      total: 0,
+      currentItem: null
+    }
+  }
+
   // ===== 计算属性 =====
   const activeTasks = computed(() => tasks.value.filter(t => t.status === 'downloading'))
   const pendingTasks = computed(() => tasks.value.filter(t => t.status === 'pending'))
@@ -29,9 +46,12 @@ export const useDownloadStore = defineStore('download', () => {
   const hasActiveDownload = computed(() => isDownloading.value || activeTasks.value.length > 0)
 
   // ===== 本地存储 =====
-  function loadFromStorage() {
+  function loadFromStorage(targetUserId = userStore.activeUserId) {
+    if (typeof localStorage === 'undefined') return
+    isHydrating = true
+    resetState()
     try {
-      const data = localStorage.getItem(DOWNLOAD_STORAGE_KEY)
+      const data = localStorage.getItem(getKey(targetUserId))
       if (data) {
         const parsed = JSON.parse(data)
         downloadHistory.value = parsed.downloadHistory || []
@@ -43,20 +63,35 @@ export const useDownloadStore = defineStore('download', () => {
       }
     } catch (e) {
       console.error('加载下载数据失败:', e)
+    } finally {
+      isHydrating = false
     }
   }
 
   function saveToStorage() {
+    if (typeof localStorage === 'undefined' || isHydrating) return
     try {
       const data = {
         tasks: tasks.value,
         downloadHistory: downloadHistory.value.slice(0, 100) // 只保留最近100条
       }
-      localStorage.setItem(DOWNLOAD_STORAGE_KEY, JSON.stringify(data))
+      localStorage.setItem(getKey(), JSON.stringify(data))
     } catch (e) {
       console.error('保存下载数据失败:', e)
     }
   }
+
+  function removeDataFor(userId) {
+    localStorage.removeItem(getKey(userId))
+  }
+
+  onUserSwitched(() => {
+    loadFromStorage()
+  })
+
+  onUserRemoved((userId) => {
+    removeDataFor(userId)
+  })
 
   // ===== 解析功能 =====
   
@@ -243,7 +278,10 @@ export const useDownloadStore = defineStore('download', () => {
     isParsing,
     isDownloading,
     currentProgress,
-    
+    resetState,
+    loadFromStorage,
+    removeDataFor,
+
     // 计算属性
     activeTasks,
     pendingTasks,

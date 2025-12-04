@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { useAppStore } from './gameStore'
+import { useUserStore, onUserSwitched, onUserRemoved } from './userStore'
 
 // ==================== SVG 徽章动态加载 ====================
 // 徽章目录现在从 SVG 文件的 data-badge-* 属性动态加载
@@ -201,6 +202,9 @@ function generateMachineTraits(weekSeed) {
 }
 
 export const useBadgeStore = defineStore('badge', () => {
+  const userStore = useUserStore()
+  let isHydrating = false
+
   // 徽章目录（只读）
   const badgeCatalog = ref(BADGE_CATALOG)
   const rarityConfig = ref(RARITY_CONFIG)
@@ -215,18 +219,29 @@ export const useBadgeStore = defineStore('badge', () => {
   const lastRefreshWeek = ref('')
   const drawHistory = ref([]) // 抽取历史
 
+  const getKey = (baseKey, userId = userStore.activeUserId) => userStore.getStorageKey(baseKey, userId)
+
+  function resetState() {
+    ownedBadges.value = []
+    machines.value = []
+    lastRefreshWeek.value = ''
+    drawHistory.value = []
+  }
+
   // 从本地存储加载数据
-  function loadFromStorage() {
+  function loadFromStorage(targetUserId = userStore.activeUserId) {
     if (typeof localStorage === 'undefined') return
+    isHydrating = true
+    resetState()
     try {
-      const data = localStorage.getItem(STORAGE_KEY)
+      const data = localStorage.getItem(getKey(STORAGE_KEY, targetUserId))
       if (data) {
         const parsed = JSON.parse(data)
         ownedBadges.value = parsed.ownedBadges || []
       }
       
       // 加载推币机数据
-      const machineData = localStorage.getItem(MACHINE_STORAGE_KEY)
+      const machineData = localStorage.getItem(getKey(MACHINE_STORAGE_KEY, targetUserId))
       if (machineData) {
         const parsed = JSON.parse(machineData)
         lastRefreshWeek.value = parsed.lastRefreshWeek || ''
@@ -234,33 +249,35 @@ export const useBadgeStore = defineStore('badge', () => {
         drawHistory.value = parsed.drawHistory || []
       }
       
-      // 检查是否需要刷新机器
-      refreshMachinesIfNeeded()
     } catch (e) {
       console.error('加载徽章数据失败:', e)
+    } finally {
+      isHydrating = false
     }
+    // 检查是否需要刷新机器
+    refreshMachinesIfNeeded()
   }
 
   // 保存到本地存储
   function saveToStorage() {
-    if (typeof localStorage === 'undefined') return
+    if (typeof localStorage === 'undefined' || isHydrating) return
     const data = {
       ownedBadges: ownedBadges.value,
       savedAt: new Date().toISOString()
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    localStorage.setItem(getKey(STORAGE_KEY), JSON.stringify(data))
   }
   
   // 保存推币机数据
   function saveMachineData() {
-    if (typeof localStorage === 'undefined') return
+    if (typeof localStorage === 'undefined' || isHydrating) return
     const data = {
       lastRefreshWeek: lastRefreshWeek.value,
       machines: machines.value,
       drawHistory: drawHistory.value.slice(-50), // 只保留最近50条
       savedAt: new Date().toISOString()
     }
-    localStorage.setItem(MACHINE_STORAGE_KEY, JSON.stringify(data))
+    localStorage.setItem(getKey(MACHINE_STORAGE_KEY), JSON.stringify(data))
   }
   
   // 刷新推币机（如果需要）
@@ -287,7 +304,23 @@ export const useBadgeStore = defineStore('badge', () => {
   })
 
   // 监听数据变化自动保存
-  watch(ownedBadges, saveToStorage, { deep: true })
+  watch(ownedBadges, () => {
+    if (isHydrating) return
+    saveToStorage()
+  }, { deep: true })
+
+  function removeDataFor(userId) {
+    localStorage.removeItem(getKey(STORAGE_KEY, userId))
+    localStorage.removeItem(getKey(MACHINE_STORAGE_KEY, userId))
+  }
+
+  onUserSwitched(() => {
+    loadFromStorage()
+  })
+
+  onUserRemoved((userId) => {
+    removeDataFor(userId)
+  })
 
   // 购买徽章
   function purchaseBadge(badgeId) {
@@ -567,6 +600,8 @@ export const useBadgeStore = defineStore('badge', () => {
     exportBadgeData,
     importBadgeData,
     clearBadgeData,
+    resetState,
+    removeDataFor,
     loadFromStorage,
     // 推币机方法
     getMachinePrice,

@@ -1,9 +1,17 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
+import { useUserStore, onUserSwitched, onUserRemoved } from './userStore'
 
 const STORAGE_KEY = 'focus-garden-data'
 
+const defaultTodoGroups = () => ([
+  { id: 'general', name: '待办', icon: '📜', color: 'sky', builtin: true },
+  { id: 'housework', name: '家务', icon: '🏠', color: 'amber', builtin: true }
+])
+
 export const useAppStore = defineStore('app', () => {
+  const userStore = useUserStore()
+  let isHydrating = false
   // 种子类型（固定时长）
   const seedTypes = [
     { id: 'sprout', name: '嫩芽', icon: '🌱', minutes: 5, description: '快速专注' },
@@ -15,10 +23,7 @@ export const useAppStore = defineStore('app', () => {
   // 状态
   const coins = ref(0) // 金币
   const todos = ref([]) // 待办事项
-  const todoGroups = ref([
-    { id: 'general', name: '待办', icon: '📝', color: 'sky', builtin: true },
-    { id: 'housework', name: '家务', icon: '🏠', color: 'amber', builtin: true }
-  ]) // 待办分组
+  const todoGroups = ref(defaultTodoGroups()) // 待办分组
   const recycleBin = ref([]) // 回收站
   const focusRecords = ref([]) // 专注记录（包括在花园的和已出售的）
   const currentFocus = ref(null) // 当前专注会话
@@ -152,11 +157,23 @@ export const useAppStore = defineStore('app', () => {
     return { bonus, reasons: bonusReasons, pattern, currentSlot }
   }
 
-  // 从本地存储加载数据
-  function loadFromStorage() {
+  // 重置状态到默认值
+  function resetState() {
+    todos.value = []
+    todoGroups.value = defaultTodoGroups()
+    recycleBin.value = []
+    focusRecords.value = []
+    coins.value = 0
+    currentFocus.value = null
+  }
+
+  // 从本地存储加载数据（按用户隔离）
+  function loadFromStorage(targetUserId = userStore.activeUserId) {
     if (typeof localStorage === 'undefined') return
+    isHydrating = true
+    resetState()
     try {
-      const data = localStorage.getItem(STORAGE_KEY)
+      const data = localStorage.getItem(userStore.getStorageKey(STORAGE_KEY, targetUserId))
       if (data) {
         const parsed = JSON.parse(data)
         todos.value = parsed.todos || []
@@ -173,12 +190,14 @@ export const useAppStore = defineStore('app', () => {
       }
     } catch (e) {
       console.error('加载数据失败:', e)
+    } finally {
+      isHydrating = false
     }
   }
 
-  // 保存到本地存储
+  // 保存到本地存储（按用户隔离）
   function saveToStorage() {
-    if (typeof localStorage === 'undefined') return
+    if (typeof localStorage === 'undefined' || isHydrating) return
     const data = {
       todos: todos.value,
       todoGroups: todoGroups.value,
@@ -188,11 +207,27 @@ export const useAppStore = defineStore('app', () => {
       currentFocus: currentFocus.value,
       exportedAt: new Date().toISOString()
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    localStorage.setItem(userStore.getStorageKey(STORAGE_KEY), JSON.stringify(data))
   }
 
   // 监听数据变化自动保存
-  watch([todos, todoGroups, recycleBin, focusRecords, coins, currentFocus], saveToStorage, { deep: true })
+  watch([todos, todoGroups, recycleBin, focusRecords, coins, currentFocus], () => {
+    if (isHydrating) return
+    saveToStorage()
+  }, { deep: true })
+
+  // 删除指定用户的数据
+  function removeDataFor(userId) {
+    localStorage.removeItem(userStore.getStorageKey(STORAGE_KEY, userId))
+  }
+
+  onUserSwitched(() => {
+    loadFromStorage()
+  })
+
+  onUserRemoved((userId) => {
+    removeDataFor(userId)
+  })
 
   // ===== 待办事项相关 =====
   function addTodo(text, groupId = 'general') {
@@ -465,10 +500,7 @@ export const useAppStore = defineStore('app', () => {
 
   function clearAllData() {
     todos.value = []
-    todoGroups.value = [
-      { id: 'general', name: '待办', icon: '📝', color: 'sky', builtin: true },
-      { id: 'housework', name: '家务', icon: '🏠', color: 'amber', builtin: true }
-    ]
+    todoGroups.value = defaultTodoGroups()
     recycleBin.value = []
     focusRecords.value = []
     coins.value = 0
@@ -549,6 +581,8 @@ export const useAppStore = defineStore('app', () => {
     exportData,
     importData,
     clearAllData,
+    resetState,
+    removeDataFor,
     loadFromStorage
   }
 })

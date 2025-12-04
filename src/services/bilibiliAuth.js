@@ -1,23 +1,116 @@
 /**
- * B站登录认证服务
- * 支持二维码登录
+ * B站登录认证与多会话支持
  */
 
 import { Capacitor } from '@capacitor/core'
 import { httpGet } from './httpService'
+import { useUserStore, onUserSwitched, onUserRemoved } from '../stores/userStore'
 
 const isNative = Capacitor.isNativePlatform()
-const AUTH_STORAGE_KEY = 'bilibili-auth'
+const SESSION_STORAGE_KEY = 'bilibili-auth-sessions'
+const DEFAULT_EXPIRE_DAYS = 30
 
-// 登录状态
-let authInfo = {
-  isLoggedIn: false,
-  userId: null,
-  userName: null,
-  avatar: null,
-  cookies: '',
-  expiresAt: null
+let sessionsCache = loadSessionsFromStorage()
+let activeSession = null
+
+function loadSessionsFromStorage() {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed.sessions || {}
+  } catch (error) {
+    console.error('加载B站会话失败:', error)
+    return {}
+  }
 }
+
+function persistSessions() {
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ sessions: sessionsCache }))
+  } catch (error) {
+    console.error('保存B站会话失败:', error)
+  }
+}
+
+function normalizeAvatar(url) {
+  if (!url) return ''
+  if (url.startsWith('//')) return `https:${url}`
+  if (url.startsWith('http://')) return url.replace(/^http:/, 'https:')
+  return url
+}
+
+function getExpireDate(days = DEFAULT_EXPIRE_DAYS) {
+  const expires = new Date()
+  expires.setDate(expires.getDate() + days)
+  return expires.toISOString()
+}
+
+function safeUserStore() {
+  try {
+    return useUserStore()
+  } catch {
+    return null
+  }
+}
+
+function getActiveUserId() {
+  const store = safeUserStore()
+  return store?.activeUserId || null
+}
+
+function isSessionExpired(session) {
+  if (!session?.expiresAt) return false
+  return new Date(session.expiresAt) <= new Date()
+}
+
+function syncActiveSession(userId = getActiveUserId()) {
+  activeSession = userId ? sessionsCache[userId] || null : null
+  if (activeSession && isSessionExpired(activeSession)) {
+    clearSession(userId)
+    activeSession = null
+  }
+}
+
+function saveSession(userId, session) {
+  if (!userId) return null
+  sessionsCache[userId] = {
+    ...session,
+    userId: session.userId || userId.replace(/^bili:/, ''),
+    userName: session.userName || session.displayName || '',
+    avatar: normalizeAvatar(session.avatar),
+    expiresAt: session.expiresAt || getExpireDate(),
+    lastValidatedAt: session.lastValidatedAt || new Date().toISOString()
+  }
+  persistSessions()
+  if (userId === getActiveUserId()) {
+    activeSession = sessionsCache[userId]
+  }
+  return sessionsCache[userId]
+}
+
+function loadSessionFor(userId) {
+  return sessionsCache[userId] || null
+}
+
+function clearSession(userId = getActiveUserId()) {
+  if (!userId) return
+  delete sessionsCache[userId]
+  persistSessions()
+  if (userId === getActiveUserId()) {
+    activeSession = null
+  }
+}
+
+syncActiveSession()
+
+onUserSwitched((userId) => {
+  syncActiveSession(userId)
+})
+
+onUserRemoved((userId) => {
+  clearSession(userId)
+})
 
 /**
  * 获取API URL（处理代理）
@@ -26,7 +119,6 @@ function getApiUrl(path) {
   if (isNative) {
     return `https://passport.bilibili.com${path}`
   }
-  // Web端使用代理
   return `/api/passport${path}`
 }
 
@@ -40,92 +132,60 @@ function getMainApiUrl(path) {
   return `/api/bili${path}`
 }
 
-function normalizeAvatar(url) {
-  if (!url) return ''
-  if (url.startsWith('//')) return `https:${url}`
-  if (url.startsWith('http://')) return url.replace(/^http:/, 'https:')
-  return url
-}
-
 /**
- * 从本地存储加载认证信息
- */
-export function loadAuthFromStorage() {
-  try {
-    const data = localStorage.getItem(AUTH_STORAGE_KEY)
-    if (data) {
-      const parsed = JSON.parse(data)
-      // 检查是否过期
-      if (parsed.expiresAt && new Date(parsed.expiresAt) > new Date()) {
-        authInfo = parsed
-        return true
-      } else {
-        // 已过期，清除
-        clearAuth()
-      }
-    }
-  } catch (e) {
-    console.error('加载B站认证信息失败:', e)
-  }
-  return false
-}
-
-/**
- * 保存认证信息到本地存储
- */
-function saveAuthToStorage() {
-  try {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authInfo))
-  } catch (e) {
-    console.error('保存B站认证信息失败:', e)
-  }
-}
-
-/**
- * 清除认证信息
- */
-export function clearAuth() {
-  authInfo = {
-    isLoggedIn: false,
-    userId: null,
-    userName: null,
-    avatar: null,
-    cookies: '',
-    expiresAt: null
-  }
-  localStorage.removeItem(AUTH_STORAGE_KEY)
-}
-
-/**
- * 获取当前认证状态
+ * 读取当前会话信息
  */
 export function getAuthInfo() {
-  return { ...authInfo }
+  syncActiveSession()
+  if (!activeSession) {
+    return {
+      isLoggedIn: false,
+      userId: null,
+      userName: null,
+      avatar: null,
+      cookies: '',
+      sessionKey: null
+    }
+  }
+  const sessionKey = getActiveUserId()
+  return {
+    ...activeSession,
+    sessionKey,
+    isLoggedIn: !!activeSession.cookies && !isSessionExpired(activeSession)
+  }
 }
 
-/**
- * 是否已登录
- */
 export function isLoggedIn() {
-  return authInfo.isLoggedIn && authInfo.cookies
+  return getAuthInfo().isLoggedIn
+}
+
+export function getAuthCookies() {
+  const info = getAuthInfo()
+  return info.isLoggedIn ? (info.cookies || '') : ''
 }
 
 /**
- * 获取登录Cookie（用于API请求）
+ * 从本地读取会话，返回是否存在有效登录
  */
-export function getAuthCookies() {
-  return authInfo.cookies || ''
+export function loadAuthFromStorage() {
+  syncActiveSession()
+  return isLoggedIn()
+}
+
+/**
+ * 清除当前用户的登录状态
+ */
+export function clearAuth() {
+  clearSession(getActiveUserId())
 }
 
 /**
  * 生成二维码登录密钥
- * @returns {Promise<{url: string, qrcode_key: string}>}
  */
 export async function generateQRCode() {
   try {
     let data
     if (isNative) {
-      // 原生端使用CapacitorHttp
       data = await httpGet('https://passport.bilibili.com/x/passport-login/web/qrcode/generate')
     } else {
       const response = await fetch(getApiUrl('/x/passport-login/web/qrcode/generate'))
@@ -137,8 +197,8 @@ export async function generateQRCode() {
     }
     
     return {
-      url: data.data.url,        // 二维码内容URL
-      qrcode_key: data.data.qrcode_key  // 用于轮询的key
+      url: data.data.url,
+      qrcode_key: data.data.qrcode_key
     }
   } catch (error) {
     console.error('生成登录二维码失败:', error)
@@ -148,21 +208,12 @@ export async function generateQRCode() {
 
 /**
  * 轮询检查二维码扫描状态
- * @param {string} qrcode_key - 二维码key
- * @returns {Promise<{status: number, message: string, cookies?: string}>}
- * 
- * status说明:
- * 86101 - 未扫码
- * 86090 - 已扫码未确认
- * 86038 - 二维码已过期
- * 0 - 登录成功
  */
 export async function checkQRCodeStatus(qrcode_key) {
   try {
     let data, response
     
     if (isNative) {
-      // 原生端使用CapacitorHttp
       data = await httpGet(`https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key=${qrcode_key}`)
     } else {
       response = await fetch(
@@ -176,14 +227,11 @@ export async function checkQRCodeStatus(qrcode_key) {
       message: getStatusMessage(data.data?.code ?? data.code)
     }
     
-    // 登录成功
     if (data.data?.code === 0) {
-      // 从响应中提取Cookie
       const cookies = extractCookiesFromResponse(response, data.data)
       if (cookies) {
-        result.cookies = cookies
-        // 保存登录信息
-        await saveLoginInfo(cookies, data.data)
+        const session = await finalizeLoginWithCookies(cookies)
+        result.session = session
       }
     }
     
@@ -194,9 +242,6 @@ export async function checkQRCodeStatus(qrcode_key) {
   }
 }
 
-/**
- * 获取状态消息
- */
 function getStatusMessage(code) {
   const messages = {
     86101: '请扫描二维码',
@@ -207,20 +252,12 @@ function getStatusMessage(code) {
   return messages[code] || '未知状态'
 }
 
-/**
- * 从响应中提取Cookie
- */
 function extractCookiesFromResponse(response, data) {
-  // 尝试从refresh_token构建Cookie字符串
-  // 实际的Cookie会在Set-Cookie头中，但跨域无法获取
-  // 这里使用url参数中的信息
-  if (data.url) {
+  if (data?.url) {
     const url = new URL(data.url)
     const params = new URLSearchParams(url.search)
     
     const cookies = []
-    
-    // B站登录成功后URL中会带有这些参数
     const DedeUserID = params.get('DedeUserID')
     const DedeUserID__ckMd5 = params.get('DedeUserID__ckMd5')
     const SESSDATA = params.get('SESSDATA')
@@ -240,51 +277,24 @@ function extractCookiesFromResponse(response, data) {
 }
 
 /**
- * 保存登录信息
- */
-async function saveLoginInfo(cookies, loginData) {
-  authInfo.cookies = cookies
-  authInfo.isLoggedIn = true
-  
-  // 设置过期时间（30天）
-  const expiresAt = new Date()
-  expiresAt.setDate(expiresAt.getDate() + 30)
-  authInfo.expiresAt = expiresAt.toISOString()
-  
-  // 获取用户信息
-  try {
-    const userInfo = await fetchUserInfo()
-    if (userInfo) {
-      authInfo.userId = userInfo.mid
-      authInfo.userName = userInfo.uname
-      authInfo.avatar = normalizeAvatar(userInfo.face)
-    }
-  } catch (e) {
-    console.warn('获取用户信息失败:', e)
-  }
-  
-  saveAuthToStorage()
-}
-
-/**
  * 获取当前登录用户信息
  */
-export async function fetchUserInfo() {
-  if (!authInfo.cookies) return null
+export async function fetchUserInfo(targetCookies = null) {
+  const cookies = targetCookies || getAuthCookies()
+  if (!cookies) return null
   
   try {
     let data
     if (isNative) {
-      // 原生端使用CapacitorHttp
       data = await httpGet('https://api.bilibili.com/x/web-interface/nav', {
         headers: {
-          'Cookie': authInfo.cookies
+          'Cookie': cookies
         }
       })
     } else {
       const response = await fetch(getMainApiUrl('/x/web-interface/nav'), {
         headers: {
-          'Cookie': authInfo.cookies
+          'Cookie': cookies
         }
       })
       data = await response.json()
@@ -306,63 +316,77 @@ export async function fetchUserInfo() {
   return null
 }
 
-/**
- * 使用Cookie字符串登录（手动输入方式）
- */
-export async function loginWithCookies(cookieString) {
+async function finalizeLoginWithCookies(cookieString) {
   if (!cookieString || !cookieString.includes('SESSDATA')) {
     throw new Error('Cookie格式不正确，需要包含SESSDATA')
   }
-  
-  authInfo.cookies = cookieString
-  
-  // 验证Cookie是否有效
-  const userInfo = await fetchUserInfo()
-  
-  if (userInfo) {
-    authInfo.isLoggedIn = true
-    authInfo.userId = userInfo.mid
-    authInfo.userName = userInfo.uname
-    authInfo.avatar = normalizeAvatar(userInfo.face)
-    
-    // 设置过期时间
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 30)
-    authInfo.expiresAt = expiresAt.toISOString()
-    
-    saveAuthToStorage()
-    return userInfo
-  } else {
-    authInfo.cookies = ''
+  const userInfo = await fetchUserInfo(cookieString)
+  if (!userInfo) {
     throw new Error('Cookie无效或已过期')
   }
+  const sessionKey = `bili:${userInfo.mid}`
+  const session = saveSession(sessionKey, {
+    cookies: cookieString,
+    userId: String(userInfo.mid),
+    userName: userInfo.uname,
+    avatar: normalizeAvatar(userInfo.face),
+    expiresAt: getExpireDate(),
+    lastValidatedAt: new Date().toISOString()
+  })
+  const userStore = safeUserStore()
+  if (userStore) {
+    userStore.registerOrUpdate({
+      uid: String(userInfo.mid),
+      source: 'bilibili',
+      displayName: userInfo.uname,
+      avatar: session.avatar,
+      sessionKey
+    })
+  }
+  return { sessionKey, ...session }
 }
 
 /**
- * 刷新登录状态
+ * 使用Cookie字符串登录
+ */
+export async function loginWithCookies(cookieString) {
+  return finalizeLoginWithCookies(cookieString)
+}
+
+/**
+ * 刷新当前登录状态
  */
 export async function refreshAuthStatus() {
-  if (!authInfo.cookies) {
-    authInfo.isLoggedIn = false
-    return false
-  }
-  
-  const userInfo = await fetchUserInfo()
-  if (userInfo) {
-    authInfo.isLoggedIn = true
-    authInfo.userId = userInfo.mid
-    authInfo.userName = userInfo.uname
-    authInfo.avatar = normalizeAvatar(userInfo.face)
-    saveAuthToStorage()
-    return true
-  } else {
+  const cookies = getAuthCookies()
+  if (!cookies) {
     clearAuth()
     return false
   }
+  const userInfo = await fetchUserInfo(cookies)
+  if (userInfo) {
+    const sessionKey = `bili:${userInfo.mid}`
+    saveSession(sessionKey, {
+      ...(loadSessionFor(sessionKey) || {}),
+      cookies,
+      userId: String(userInfo.mid),
+      userName: userInfo.uname,
+      avatar: userInfo.face,
+      lastValidatedAt: new Date().toISOString()
+    })
+    return true
+  }
+  clearAuth()
+  return false
 }
 
-// 初始化时加载认证信息
+// 模块初始化时同步一次会话
 loadAuthFromStorage()
+
+export {
+  saveSession,
+  loadSessionFor,
+  clearSession
+}
 
 export default {
   loadAuthFromStorage,
@@ -374,5 +398,8 @@ export default {
   checkQRCodeStatus,
   fetchUserInfo,
   loginWithCookies,
-  refreshAuthStatus
+  refreshAuthStatus,
+  saveSession,
+  loadSessionFor,
+  clearSession
 }

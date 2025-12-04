@@ -1,6 +1,5 @@
 <script setup>
-import { computed } from 'vue'
-import { Home, Flame, Headphones, RefreshCw, Grid } from 'lucide-vue-next'
+import { Home, Flame, RefreshCw } from 'lucide-vue-next'
 
 const props = defineProps({
   mode: {
@@ -17,8 +16,7 @@ const emit = defineEmits(['update:mode', 'refresh'])
 
 const modes = [
   { value: 'recommend', label: '推荐', icon: Home },
-  { value: 'popular', label: '热门', icon: Flame },
-  { value: 'zone', label: '分区', icon: Headphones }
+  { value: 'popular', label: '热门', icon: Flame }
 ]
 </script>
 

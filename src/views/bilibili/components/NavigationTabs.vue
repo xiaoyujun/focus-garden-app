@@ -1,5 +1,5 @@
 <script setup>
-import { Home, Search, Clock, Heart, Folder, History } from 'lucide-vue-next'
+import { Home, Search, Clock, Heart, Folder, History, Users } from 'lucide-vue-next'
 
 const props = defineProps({
   activeTab: {
@@ -22,6 +22,7 @@ const tabs = [
 ]
 
 const loginTabs = [
+  { id: 'follow', label: '关注', icon: Users },
   { id: 'biliFav', label: 'B站收藏', icon: Folder },
   { id: 'biliHistory', label: 'B站历史', icon: History },
 ]

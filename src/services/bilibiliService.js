@@ -1,34 +1,32 @@
 /**
  * B站视频解析服务
- * 负责所有与B站相关的请求：视频信息、播放地址、搜索、收藏、历史等
- * Web 端通过 Vite 代理，原生端使用 CapacitorHttp 直连并绕过 CORS
+ * 负责视频信息、播放地址、搜索、收藏、历史等接口调用
+ * Web 端通过 Vite 代理，原生端使用 CapacitorHttp 直连规避 CORS
  */
-
 import { Capacitor } from '@capacitor/core'
 import { getAuthCookies, isLoggedIn } from './bilibiliAuth'
 import { httpGet } from './httpService'
 
-// 平台判断
 const isNative = Capacitor.isNativePlatform()
 
-// 通用头与缓存配置
+// 通用 headers 与缓存配置
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 const REFERER = 'https://www.bilibili.com/'
 const ORIGIN = 'https://www.bilibili.com'
-// 缓存时间配置（登录后使用官方API，可以更积极地缓存）
-const CACHE_TTL = 1000 * 60 * 5      // 默认5分钟（播放地址等时效性数据）
+// 缓存时间配置（登录后使用官方 API，可以更积极地缓存）
+const CACHE_TTL = 1000 * 60 * 5 // 默认5分钟（播放地址等时效性数据）
 const VIDEO_INFO_TTL = 1000 * 60 * 30 // 视频信息30分钟（基本不变）
 
-// 简单缓存 + 并发合并，减少同一时间的重复请求
+// 简单缓存+并发合并，减少重复请求
 const cacheStore = new Map()
 const inflightMap = new Map()
 
 // B站视频清晰度标识
-const QUALITY_MAP = {
+export const QUALITY_MAP = {
   127: '8K 超高清',
   126: '杜比视界',
-  125: 'HDR 真彩色',
+  125: 'HDR 真彩',
   120: '4K 超清',
   116: '1080P60 高帧率',
   112: '1080P+ 高码率',
@@ -39,18 +37,9 @@ const QUALITY_MAP = {
   16: '360P 流畅'
 }
 
-// 音频质量标识
-const AUDIO_QUALITY_MAP = {
-  30251: 'Hi-Res 无损',
-  30250: '杜比全景声',
-  30280: '320kbps',
-  30232: '128kbps',
-  30216: '64kbps'
-}
-
 function ensureLogin() {
   if (!isLoggedIn()) {
-    throw new Error('请先登录B站账号')
+    throw new Error('请先登录 B站账号')
   }
 }
 
@@ -75,18 +64,12 @@ function setCache(key, value, ttl = CACHE_TTL) {
 }
 
 async function withCache(key, fetcher, useCache = true, ttl = CACHE_TTL) {
-  if (!useCache) {
-    return fetcher()
-  }
+  if (!useCache) return fetcher()
 
   const cached = getCache(key)
-  if (cached !== null) {
-    return cached
-  }
+  if (cached !== null) return cached
 
-  if (inflightMap.has(key)) {
-    return inflightMap.get(key)
-  }
+  if (inflightMap.has(key)) return inflightMap.get(key)
 
   const promise = (async () => {
     try {
@@ -112,10 +95,10 @@ function buildHeaders(cookies) {
 }
 
 /**
- * 发起 API 请求
+ * 发送 API 请求
  * @param {string} path - `/x/xxx` 形式的路径
- * @param {object|boolean} options - 支持布尔值兼容旧签名
- * @param {boolean} options.isSearch - 是否走搜索代理
+ * @param {object|boolean} options
+ * @param {boolean} options.isSearch - 是否走搜索代理前缀
  * @param {boolean} options.useCache - 是否缓存/合并请求
  * @param {string} options.cacheKey - 自定义缓存 key
  * @param {number} options.cacheTtl - 自定义缓存时间（毫秒）
@@ -133,9 +116,7 @@ async function fetchApi(path, options = {}) {
     signal
   } = opts
 
-  if (!skipLogin) {
-    ensureLogin()
-  }
+  if (!skipLogin) ensureLogin()
 
   const cookies = getAuthCookies()
   const requestHeaders = buildHeaders(cookies)
@@ -170,8 +151,8 @@ async function fetchApi(path, options = {}) {
     try {
       return JSON.parse(text)
     } catch (error) {
-      console.error('API返回非JSON，前200字符：', text.slice(0, 200))
-      throw new Error('API返回格式错误')
+      console.error('API 返回非 JSON，前 200 字符：', text.slice(0, 200))
+      throw new Error('API 返回格式错误')
     }
   }
 
@@ -179,9 +160,9 @@ async function fetchApi(path, options = {}) {
 }
 
 /**
- * 从B站URL中提取视频ID
+ * 从 B站 URL 中提取视频 ID
  * @param {string} url - B站视频链接
- * @returns {object} - { bvid, aid, cid, page, shortUrl }
+ * @returns {{ bvid: string|null, aid: number|null, cid: number|null, page: number|null, shortUrl: string|null }}
  */
 export function extractBilibiliId(url) {
   const result = { bvid: null, aid: null, cid: null, page: null, shortUrl: null }
@@ -192,19 +173,13 @@ export function extractBilibiliId(url) {
   }
 
   const bvMatch = url.match(/BV[\w]+/i)
-  if (bvMatch) {
-    result.bvid = bvMatch[0]
-  }
+  if (bvMatch) result.bvid = bvMatch[0]
 
   const avMatch = url.match(/av(\d+)/i)
-  if (avMatch) {
-    result.aid = parseInt(avMatch[1])
-  }
+  if (avMatch) result.aid = parseInt(avMatch[1])
 
   const pMatch = url.match(/[?&]p=(\d+)/)
-  if (pMatch) {
-    result.page = parseInt(pMatch[1])
-  }
+  if (pMatch) result.page = parseInt(pMatch[1])
 
   return result
 }
@@ -212,10 +187,8 @@ export function extractBilibiliId(url) {
 /**
  * 获取视频基本信息
  * @param {string} bvid
- * @returns {Promise<object>}
  */
 export async function getVideoInfo(bvid) {
-  // 视频基本信息缓存30分钟，减少重复请求
   const data = await fetchApi(`/x/web-interface/view?bvid=${bvid}`, {
     useCache: true,
     cacheKey: `view:${bvid}`,
@@ -253,16 +226,21 @@ export async function getVideoInfo(bvid) {
 export async function getPlayUrl(bvid, cid, quality = 80) {
   ensureLogin()
   try {
-    return await getPlayUrlWebMode(bvid, cid, quality)
+    const result = await getPlayUrlWebMode(bvid, cid, quality)
+    return { ...result, parseMode: 'wbi' }
   } catch (error) {
-    console.error('获取B站播放地址失败:', error)
-    throw error
+    console.warn('WBI 播放地址获取失败，尝试 HTML5 备用接口', error)
+    try {
+      const fallback = await getPlayUrlHtml5Mode(bvid, cid, quality)
+      return { ...fallback, parseMode: 'html5' }
+    } catch (fallbackError) {
+      console.error('HTML5 备用解析也失败:', fallbackError)
+      throw fallbackError
+    }
   }
 }
 
-/**
- * 标准 Web 模式播放地址
- */
+// 标准 Web 模式播放地址
 async function getPlayUrlWebMode(bvid, cid, quality = 80) {
   const params = new URLSearchParams({
     bvid,
@@ -285,155 +263,186 @@ async function getPlayUrlWebMode(bvid, cid, quality = 80) {
   return parsePlayUrl(data.data)
 }
 
-/**
- * 解析播放地址响应
- */
+// HTML5 备用接口，返回 durl 为主，更适合移动端直连
+async function getPlayUrlHtml5Mode(bvid, cid, quality = 80) {
+  const params = new URLSearchParams({
+    bvid,
+    cid,
+    qn: quality,
+    fourk: 1,
+    platform: 'html5',
+    high_quality: 1,
+    otype: 'json',
+    fnval: 0
+  })
+
+  const data = await fetchApi(`/x/player/playurl?${params}`, {
+    useCache: true,
+    cacheKey: `play-html5:${bvid}:${cid}:${quality}`
+  })
+
+  if (data.code !== 0) {
+    throw new Error(data.message || 'HTML5 播放地址获取失败')
+  }
+
+  return parsePlayUrl(data.data)
+}
+
+// 解析播放地址响应（包含音视频流）
 function parsePlayUrl(data) {
+  const supportFormats = data.support_formats || []
+  const acceptQuality = data.accept_quality || supportFormats.map(f => f.quality) || []
+  const qualityName =
+    QUALITY_MAP[data.quality] ||
+    supportFormats.find(f => f.quality === data.quality)?.new_description ||
+    '未知'
+  const durationSeconds = data.timelength ? data.timelength / 1000 : data.duration || 0
+
   const result = {
     quality: data.quality,
-    qualityName: QUALITY_MAP[data.quality] || '未知',
-    duration: data.timelength / 1000,
-    acceptQuality: data.accept_quality || [],
+    qualityName,
+    duration: durationSeconds,
+    acceptQuality,
     videos: [],
-    audios: []
+    audios: [],
+    // 当前选中的播放流（方便播放器直接使用）
+    videoUrl: null,
+    audioUrl: null,
+    type: 'dash' // dash 或 durl
   }
 
-  if (data.dash) {
-    if (data.dash.video) {
-      result.videos = data.dash.video.map(v => ({
-        id: v.id,
-        quality: QUALITY_MAP[v.id] || `${v.id}`,
-        url: v.baseUrl || v.base_url,
-        backupUrl: v.backupUrl || v.backup_url || [],
-        bandwidth: v.bandwidth,
-        codecs: v.codecs,
-        width: v.width,
-        height: v.height,
-        frameRate: v.frameRate || v.frame_rate
-      }))
-    }
-
-    if (data.dash.audio) {
-      result.audios = data.dash.audio.map(a => ({
-        id: a.id,
-        quality: AUDIO_QUALITY_MAP[a.id] || `${a.id}`,
-        url: a.baseUrl || a.base_url,
-        backupUrl: a.backupUrl || a.backup_url || [],
-        bandwidth: a.bandwidth,
-        codecs: a.codecs
-      }))
-    }
-
-    if (data.dash.flac?.audio) {
-      const flac = data.dash.flac.audio
-      result.audios.unshift({
-        id: flac.id || 30251,
-        quality: 'Hi-Res 无损',
-        url: flac.baseUrl || flac.base_url,
-        backupUrl: flac.backupUrl || flac.backup_url || [],
-        bandwidth: flac.bandwidth,
-        codecs: flac.codecs,
-        isFlac: true
-      })
-    }
-
-    if (data.dash.dolby?.audio?.length > 0) {
-      const dolby = data.dash.dolby.audio[0]
-      result.audios.unshift({
-        id: dolby.id || 30250,
-        quality: '杜比全景声',
-        url: dolby.baseUrl || dolby.base_url,
-        backupUrl: dolby.backupUrl || dolby.backup_url || [],
-        bandwidth: dolby.bandwidth,
-        codecs: dolby.codecs,
-        isDolby: true
-      })
+  if (data.dash?.video) {
+    result.type = 'dash'
+    result.videos = data.dash.video.map(v => ({
+      id: v.id,
+      quality: QUALITY_MAP[v.id] || `${v.id}`,
+      url: v.baseUrl || v.base_url,
+      backupUrl: v.backupUrl || v.backup_url || [],
+      bandwidth: v.bandwidth,
+      codecs: v.codecs,
+      width: v.width,
+      height: v.height,
+      frameRate: v.frameRate || v.frame_rate
+    }))
+    // 选择当前画质对应的视频流
+    const targetVideo = result.videos.find(v => v.id === data.quality) || result.videos[0]
+    if (targetVideo) {
+      result.videoUrl = targetVideo.url
     }
   }
 
+  // 解析音频流（DASH 模式下音视频分离）
+  if (data.dash?.audio) {
+    result.audios = data.dash.audio.map(a => ({
+      id: a.id,
+      url: a.baseUrl || a.base_url,
+      backupUrl: a.backupUrl || a.backup_url || [],
+      bandwidth: a.bandwidth,
+      codecs: a.codecs
+    }))
+    // 选择最高码率的音频
+    const bestAudio = result.audios.reduce((best, curr) => 
+      (curr.bandwidth > (best?.bandwidth || 0)) ? curr : best, null)
+    if (bestAudio) {
+      result.audioUrl = bestAudio.url
+    }
+  }
+
+  // 兼容模式 durl（音视频合并）
   if (data.durl) {
+    result.type = 'durl'
     result.durl = data.durl.map(d => ({
       url: d.url,
       backupUrl: d.backup_url || [],
       size: d.size,
       duration: d.length / 1000
     }))
+    // durl 模式下直接使用第一个 durl 作为播放地址
+    if (result.durl.length && !result.videoUrl) {
+      result.videoUrl = result.durl[0].url
+    }
   }
 
   return result
 }
 
 /**
- * 获取最佳音频流 URL（听书场景使用）
+ * 获取主评论列表（需要登录）
  */
-export async function getBestAudioUrl(bvid, cid) {
+export async function getReplies(params) {
   ensureLogin()
-  const playInfo = await getPlayUrl(bvid, cid)
+  const { oid, page = 1, pageSize = 20, mode = 'hot' } = params || {}
+  if (!oid) throw new Error('缺少稿件 ID')
 
-  if (playInfo.audios?.length) {
-    const sortedAudios = [...playInfo.audios].sort((a, b) => b.bandwidth - a.bandwidth)
-    const bestAudio = sortedAudios[0]
-    return bestAudio.url
+  const modeMap = { hot: 3, time: 2 }
+  const qs = new URLSearchParams({
+    type: 1, // 1=视频
+    oid,
+    ps: pageSize,
+    pn: page,
+    mode: modeMap[mode] ?? 3
+  })
+
+  const data = await fetchApi(`/x/v2/reply/wbi/main?${qs}`)
+  if (data.code !== 0) {
+    throw new Error(data.message || '获取评论失败')
   }
 
-  if (playInfo.durl?.length) {
-    return playInfo.durl[0].url
-  }
+  const replies = data.data?.replies || []
+  const cursor = data.data?.cursor || {}
 
-  throw new Error('无法获取音频地址')
+  return {
+    hasMore: cursor.is_end === false,
+    next: cursor.next || page + 1,
+    list: replies.map(r => ({
+      id: r.rpid,
+      mid: r.member?.mid,
+      uname: r.member?.uname || '',
+      face: normalizeCover(r.member?.avatar || ''),
+      message: r.content?.message || '',
+      ctime: r.ctime * 1000,
+      like: r.like || 0,
+      replyCount: r.rcount || 0
+    }))
+  }
 }
 
 /**
- * 获取音频 URL 列表（包含备用地址）
+ * 获取楼中楼评论
  */
-export async function getAudioUrls(bvid, cid, options = {}) {
-  const { mode = 'official' } = typeof options === 'string' ? { mode: options } : options
+export async function getSubReplies(params) {
   ensureLogin()
-  const urls = []
-  const playInfo = await getPlayUrl(bvid, cid)
-  const preferProgressive = mode === 'compat'
+  const { oid, root, page = 1, pageSize = 10 } = params || {}
+  if (!oid || !root) throw new Error('缺少评论 ID')
 
-  const pushDashAudios = () => {
-    if (playInfo.audios?.length) {
-      const sortedAudios = [...playInfo.audios].sort((a, b) => b.bandwidth - a.bandwidth)
-      for (const audio of sortedAudios) {
-        if (audio.url) urls.push(audio.url)
-        if (audio.backupUrl?.length) {
-          urls.push(...audio.backupUrl)
-        }
-      }
-    }
+  const qs = new URLSearchParams({
+    type: 1,
+    oid,
+    root,
+    ps: pageSize,
+    pn: page
+  })
+
+  const data = await fetchApi(`/x/v2/reply/reply?${qs}`)
+  if (data.code !== 0) {
+    throw new Error(data.message || '获取回复失败')
   }
 
-  const pushProgressive = () => {
-    if (playInfo.durl?.length) {
-      for (const d of playInfo.durl) {
-        if (d.url) urls.push(d.url)
-        if (d.backupUrl?.length) urls.push(...d.backupUrl)
-      }
-    }
+  const replies = data.data?.replies || []
+  const pageInfo = data.data?.page || {}
+
+  return {
+    hasMore: replies.length >= pageSize || (pageInfo?.count || 0) > page * pageSize,
+    list: replies.map(r => ({
+      id: r.rpid,
+      mid: r.member?.mid,
+      uname: r.member?.uname || '',
+      face: normalizeCover(r.member?.avatar || ''),
+      message: r.content?.message || '',
+      ctime: r.ctime * 1000,
+      like: r.like || 0
+    }))
   }
-
-  if (preferProgressive) {
-    pushProgressive()
-    pushDashAudios()
-  } else {
-    pushDashAudios()
-    pushProgressive()
-  }
-
-  let uniqueUrls = [...new Set(urls)]
-
-  // 官方源托管：在 Web 端预先经过后端代理，提升跨域/Referer 兼容性
-  if (mode === 'official-hosted' && !isNative) {
-    uniqueUrls = uniqueUrls.map(url => {
-      return url.startsWith('/api/bili-proxy')
-        ? url
-        : `/api/bili-proxy?url=${encodeURIComponent(url)}`
-    })
-  }
-
-  return uniqueUrls
 }
 
 /**
@@ -473,13 +482,13 @@ export async function getUploaderVideos(mid, page = 1, pageSize = 30) {
       }))
     }
   } catch (error) {
-    console.error('获取UP主视频列表失败:', error)
+    console.error('获取 UP 主视频列表失败:', error)
     throw error
   }
 }
 
 /**
- * 获取视频合集/系列
+ * 获取视频合集/分 P 信息
  */
 export async function getVideoSeries(bvid) {
   try {
@@ -519,53 +528,12 @@ export async function getVideoSeries(bvid) {
 }
 
 /**
- * B站内容分区ID映射（适合听的内容）
- */
-export const AUDIO_FRIENDLY_ZONES = {
-  // 有声书 & 故事类
-  audiobook: {
-    name: '有声书/故事',
-    tids: [247, 244, 71, 137],  // 电台(247)、翻唱(244)、综艺(71)、配音(137)
-    keywords: ['有声小说', '有声书', '睡前故事', '广播剧', '配音', '朗读'],
-    preferLong: true  // 偏好长视频
-  },
-  // 知识类
-  knowledge: {
-    name: '知识科普',
-    tids: [201, 124, 228, 207, 208, 209],  // 科学科普、社科人文、人文历史、财经商业、校园学习、职业职场
-    keywords: ['科普', '知识', '讲解', '课程', '教程'],
-    preferLong: true
-  },
-  // ASMR
-  asmr: {
-    name: 'ASMR助眠',
-    tids: [254],  // ASMR分区
-    keywords: ['ASMR', '助眠', '白噪音', '放松', '耳音'],
-    preferLong: true
-  },
-  // 音乐
-  music: {
-    name: '音乐',
-    tids: [3, 29, 28, 59, 31],  // 音乐主区、音乐综合、原创音乐、演奏、翻唱
-    keywords: ['音乐', '歌曲', '翻唱', '纯音乐'],
-    preferLong: false
-  },
-  // 播客/脱口秀
-  podcast: {
-    name: '播客/谈话',
-    tids: [241, 21, 182],  // 娱乐杂谈、日常、影视杂谈
-    keywords: ['播客', '脱口秀', '聊天', '访谈', '电台'],
-    preferLong: true
-  }
-}
-
-/**
  * 解析时长字符串为秒数
  */
 function parseDuration(durationStr) {
   if (!durationStr) return 0
   if (typeof durationStr === 'number') return durationStr
-  
+
   const parts = String(durationStr).split(':').map(Number)
   if (parts.length === 3) {
     return parts[0] * 3600 + parts[1] * 60 + parts[2]
@@ -576,20 +544,12 @@ function parseDuration(durationStr) {
 }
 
 /**
- * 搜索B站视频（增强版，支持分区筛选）
- * @param {string} keyword - 搜索关键词
- * @param {object} options - 搜索选项
- * @param {string} options.order - 排序方式
- * @param {number} options.duration - 时长筛选 (0:不限 1:<10分钟 2:10-30分钟 3:30-60分钟 4:>60分钟)
- * @param {number} options.page - 页码
- * @param {string} options.tids - 分区ID，多个用逗号分隔
- * @param {string} options.zone - 内容分区预设（audiobook/knowledge/asmr/music/podcast）
+ * 搜索 B站视频（支持简单排序/时长筛选）
  */
 export async function searchVideos(keyword, options = {}) {
   try {
-    const { order = '', duration = 0, page = 1, tids = '', zone = '' } = options
-    
-    // 构建搜索参数
+    const { order = '', duration = 0, page = 1, tids = '' } = options
+
     const params = new URLSearchParams({
       keyword,
       search_type: 'video',
@@ -597,16 +557,9 @@ export async function searchVideos(keyword, options = {}) {
       order: order || 'totalrank',
       duration
     })
-    
-    // 如果指定了分区预设，使用对应的分区ID
-    let effectiveTids = tids
-    if (zone && AUDIO_FRIENDLY_ZONES[zone]) {
-      effectiveTids = AUDIO_FRIENDLY_ZONES[zone].tids.join(',')
-    }
-    
-    // 添加分区筛选（tids参数）
-    if (effectiveTids) {
-      params.set('tids', effectiveTids)
+
+    if (tids) {
+      params.set('tids', tids)
     }
 
     const data = await fetchApi(`/x/web-interface/search/type?${params}`, {
@@ -617,8 +570,7 @@ export async function searchVideos(keyword, options = {}) {
       throw new Error(data.message || '搜索失败')
     }
 
-    // 结果后处理：根据分区预设进行智能排序/筛选
-    let results = (data.data?.result || []).map(v => ({
+    const results = (data.data?.result || []).map(v => ({
       bvid: v.bvid,
       aid: v.aid,
       title: (v.title || '').replace(/<[^>]+>/g, ''),
@@ -629,18 +581,8 @@ export async function searchVideos(keyword, options = {}) {
       mid: v.mid,
       play: v.play,
       description: v.description,
-      typeid: v.typeid  // 保留分区ID用于后续筛选
+      typeid: v.typeid
     }))
-    
-    // 如果选择了偏好长视频的分区，优先显示长视频
-    if (zone && AUDIO_FRIENDLY_ZONES[zone]?.preferLong) {
-      results = results.sort((a, b) => {
-        // 优先显示超过10分钟的视频
-        const aLong = a.durationSeconds >= 600 ? 1 : 0
-        const bLong = b.durationSeconds >= 600 ? 1 : 0
-        return bLong - aLong
-      })
-    }
 
     return {
       total: data.data?.numResults || 0,
@@ -655,7 +597,7 @@ export async function searchVideos(keyword, options = {}) {
 }
 
 /**
- * 获取用户收藏夹列表（需要登录）
+ * 获取收藏夹列表（需要登录）
  */
 export async function getFavoriteList(mid = null) {
   ensureLogin()
@@ -666,7 +608,7 @@ export async function getFavoriteList(mid = null) {
       if (match) {
         mid = parseInt(match[1])
       } else {
-        throw new Error('无法获取用户ID')
+        throw new Error('无法获取用户 ID')
       }
     }
 
@@ -821,16 +763,16 @@ function formatViewAt(timestamp) {
   const diff = now - date
 
   if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
   if (diff < 172800000) return '昨天'
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`
 
-  return `${date.getMonth() + 1}月${date.getDate()}日`
+  return `${date.getMonth() + 1} 月 ${date.getDate()} 日`
 }
 
 /**
- * 获取UP主信息
+ * 获取 UP 主信息
  */
 export async function getUploaderInfo(mid) {
   try {
@@ -840,7 +782,7 @@ export async function getUploaderInfo(mid) {
     })
 
     if (data.code !== 0) {
-      throw new Error(data.message || '获取UP主信息失败')
+      throw new Error(data.message || '获取 UP 主信息失败')
     }
 
     const info = data.data
@@ -862,13 +804,13 @@ export async function getUploaderInfo(mid) {
       }
     }
   } catch (error) {
-    console.error('获取UP主信息失败:', error)
+    console.error('获取 UP 主信息失败:', error)
     throw error
   }
 }
 
 /**
- * 获取UP主粉丝/关注统计
+ * 获取 UP 主粉丝/关注统计
  */
 export async function getUploaderStat(mid) {
   try {
@@ -878,7 +820,7 @@ export async function getUploaderStat(mid) {
     })
 
     if (data.code !== 0) {
-      throw new Error(data.message || '获取UP主统计失败')
+      throw new Error(data.message || '获取 UP 主统计失败')
     }
 
     return {
@@ -887,7 +829,7 @@ export async function getUploaderStat(mid) {
       follower: data.data?.follower || 0
     }
   } catch (error) {
-    console.error('获取UP主统计失败:', error)
+    console.error('获取 UP 主统计失败:', error)
     throw error
   }
 }
@@ -985,7 +927,7 @@ export async function getPopularVideos(page = 1, pageSize = 20) {
 }
 
 /**
- * 获取关注UP主的最新投稿（需要登录）
+ * 获取关注 UP 主的最新投稿（需要登录）
  */
 export async function getFollowingVideos(page = 1, pageSize = 20) {
   ensureLogin()
@@ -1046,126 +988,22 @@ function parseCount(text) {
   return parseInt(text, 10) || 0
 }
 
-/**
- * 获取分区热门排行榜
- * @param {number} tid - 分区ID
- * @param {number} page - 页码
- * @param {number} pageSize - 每页数量
- */
-export async function getZoneRanking(tid, page = 1, pageSize = 20) {
-  try {
-    const params = new URLSearchParams({
-      rid: tid,
-      pn: page,
-      ps: pageSize
-    })
-
-    const data = await fetchApi(`/x/web-interface/dynamic/region?${params}`, {
-      skipLogin: true,
-      useCache: true,
-      cacheKey: `zone:ranking:${tid}:${page}`,
-      cacheTtl: 1000 * 60 * 10  // 缓存10分钟
-    })
-
-    if (data.code !== 0) {
-      throw new Error(data.message || '获取分区排行失败')
-    }
-
-    return {
-      list: (data.data?.archives || []).map(v => ({
-        bvid: v.bvid,
-        aid: v.aid,
-        title: v.title,
-        cover: normalizeCover(v.pic),
-        duration: v.duration,
-        author: v.owner?.name || '',
-        mid: v.owner?.mid || 0,
-        face: v.owner?.face || '',
-        play: v.stat?.view || 0,
-        danmaku: v.stat?.danmaku || 0,
-        pubdate: v.pubdate,
-        description: v.desc,
-        typeid: v.tid
-      })),
-      hasMore: (data.data?.archives || []).length >= pageSize
-    }
-  } catch (error) {
-    console.error('获取分区排行失败:', error)
-    throw error
-  }
-}
-
-/**
- * 获取指定分区预设的热门内容
- * @param {string} zone - 分区预设（audiobook/knowledge/asmr/music/podcast）
- * @param {number} page - 页码
- */
-export async function getZoneHotVideos(zone, page = 1) {
-  if (!AUDIO_FRIENDLY_ZONES[zone]) {
-    throw new Error('无效的分区预设')
-  }
-  
-  const zoneConfig = AUDIO_FRIENDLY_ZONES[zone]
-  const allResults = []
-  
-  // 从每个子分区获取热门内容
-  for (const tid of zoneConfig.tids.slice(0, 3)) {  // 最多取3个分区避免请求过多
-    try {
-      const result = await getZoneRanking(tid, page, 10)
-      allResults.push(...result.list)
-    } catch (e) {
-      console.warn(`获取分区 ${tid} 失败:`, e)
-    }
-  }
-  
-  // 去重并排序（按播放量）
-  const uniqueMap = new Map()
-  allResults.forEach(v => {
-    if (!uniqueMap.has(v.bvid)) {
-      uniqueMap.set(v.bvid, v)
-    }
-  })
-  
-  let results = Array.from(uniqueMap.values())
-  
-  // 如果偏好长视频，优先显示长视频
-  if (zoneConfig.preferLong) {
-    results = results.sort((a, b) => {
-      const aLong = a.duration >= 600 ? 1 : 0
-      const bLong = b.duration >= 600 ? 1 : 0
-      if (aLong !== bLong) return bLong - aLong
-      return b.play - a.play
-    })
-  } else {
-    results.sort((a, b) => b.play - a.play)
-  }
-  
-  return {
-    list: results.slice(0, 20),
-    hasMore: results.length > 20,
-    zoneName: zoneConfig.name
-  }
-}
-
 export default {
   extractBilibiliId,
   getVideoInfo,
   getPlayUrl,
-  getBestAudioUrl,
-  getAudioUrls,
   getUploaderVideos,
+  getVideoSeries,
   searchVideos,
   getFavoriteList,
   getFavoriteContent,
   getHistory,
   getUploaderInfo,
   getUploaderStat,
+  getReplies,
+  getSubReplies,
   getRecommendVideos,
   getPopularVideos,
   getFollowingVideos,
-  getZoneRanking,
-  getZoneHotVideos,
-  QUALITY_MAP,
-  AUDIO_QUALITY_MAP,
-  AUDIO_FRIENDLY_ZONES
+  QUALITY_MAP
 }

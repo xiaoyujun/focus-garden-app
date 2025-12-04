@@ -1,16 +1,11 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useAppStore } from '../stores/gameStore'
-import { useOnlineAudioStore } from '../stores/onlineAudioStore'
 import { Plus, Check, Trash2, X, Settings, Archive } from 'lucide-vue-next'
 import TodoGroupManager from '../components/TodoGroupManager.vue'
 import RecycleBin from '../components/RecycleBin.vue'
 
 const store = useAppStore()
-const onlineAudioStore = useOnlineAudioStore()
-
-// B站播放器显示时需要上移底部元素
-const hasMiniPlayer = computed(() => onlineAudioStore.hasTrack)
 
 // 状态
 const newTodo = ref('')
@@ -192,8 +187,7 @@ function switchTab(groupId) {
     <button 
       v-if="!showInput"
       @click="showInput = true"
-      class="fixed right-6 w-14 h-14 bg-nature-500 text-white rounded-full shadow-lg shadow-nature-200 flex items-center justify-center hover:bg-nature-600 transition-all hover:scale-105 hover:rotate-90 z-20"
-      :class="hasMiniPlayer ? 'bottom-44' : 'bottom-24'"
+      class="fixed right-6 bottom-24 w-14 h-14 bg-nature-500 text-white rounded-full shadow-lg shadow-nature-200 flex items-center justify-center hover:bg-nature-600 transition-all hover:scale-105 hover:rotate-90 z-20"
     >
       <Plus :size="28" />
     </button>

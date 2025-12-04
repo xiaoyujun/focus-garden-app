@@ -1,23 +1,14 @@
 <script setup>
-import { ExternalLink, Download, MoreVertical, User, Play } from 'lucide-vue-next'
-import { ref, computed } from 'vue'
+import { ExternalLink, User, Play } from 'lucide-vue-next'
 
 const props = defineProps({
   video: {
     type: Object,
     required: true
-  },
-  isDownloading: {
-    type: Boolean,
-    default: false
-  },
-  showMenu: {
-    type: Boolean,
-    default: false
   }
 })
 
-const emit = defineEmits(['play', 'open-uploader', 'toggle-menu', 'open-browser', 'download'])
+const emit = defineEmits(['play', 'open-uploader', 'open-browser'])
 
 function formatDuration(seconds) {
   if (!seconds || isNaN(seconds)) return '00:00'
@@ -41,7 +32,7 @@ function formatPlayCount(count) {
 
 <template>
   <div 
-    class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all duration-300 flex flex-col h-full group"
+    class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all duration-300 flex flex-col h-full group cursor-pointer"
     @click="$emit('play', video)"
   >
     <!-- 封面区域 -->
@@ -71,7 +62,6 @@ function formatPlayCount(count) {
         {{ video.rcmdReason }}
       </div>
       
-      <!-- 分区标签 (如果有) -->
       <div v-else-if="video.zoneLabel" class="absolute top-1.5 left-1.5 px-1.5 py-0.5 text-[10px] font-bold text-white bg-violet-500/90 backdrop-blur-sm rounded-md shadow-sm">
         {{ video.zoneLabel }}
       </div>
@@ -79,13 +69,11 @@ function formatPlayCount(count) {
 
     <!-- 内容区域 -->
     <div class="p-3 flex-1 flex flex-col">
-      <!-- 标题 -->
       <h3 class="text-[13px] font-medium text-gray-800 leading-snug line-clamp-2 mb-2 group-hover:text-pink-600 transition-colors">
         {{ video.title }}
       </h3>
 
       <div class="mt-auto flex items-center justify-between text-xs text-gray-400">
-        <!-- UP主 -->
         <button 
           @click.stop="$emit('open-uploader', video)"
           class="flex items-center gap-1 hover:text-pink-500 max-w-[65%] transition-colors"
@@ -94,40 +82,15 @@ function formatPlayCount(count) {
           <span class="truncate">{{ video.author }}</span>
         </button>
 
-        <!-- 更多操作 -->
         <div class="flex items-center gap-2">
           <span class="text-[10px] bg-gray-50 px-1 rounded">{{ formatPlayCount(video.play) }}</span>
-          
-          <div class="relative">
-            <button 
-              @click.stop="$emit('toggle-menu', video)"
-              class="p-1 -mr-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <MoreVertical :size="14" />
-            </button>
-
-            <!-- 下拉菜单 -->
-            <div 
-              v-if="showMenu"
-              class="absolute right-0 bottom-full mb-1 bg-white rounded-lg shadow-xl border border-gray-100 py-1 z-20 min-w-[120px] animate-in fade-in zoom-in-95 duration-200 origin-bottom-right"
-            >
-              <button 
-                @click.stop="$emit('open-browser', video)"
-                class="w-full px-3 py-2 text-left text-xs text-gray-600 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-2"
-              >
-                <ExternalLink :size="14" />
-                浏览器打开
-              </button>
-              <button 
-                @click.stop="$emit('download', video)"
-                :disabled="isDownloading"
-                class="w-full px-3 py-2 text-left text-xs text-gray-600 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-2 disabled:opacity-50"
-              >
-                <Download :size="14" :class="{ 'animate-bounce': isDownloading }" />
-                {{ isDownloading ? '下载中...' : '下载音频' }}
-              </button>
-            </div>
-          </div>
+          <button 
+            @click.stop="$emit('open-browser', video)"
+            class="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            title="浏览器打开"
+          >
+            <ExternalLink :size="14" />
+          </button>
         </div>
       </div>
     </div>

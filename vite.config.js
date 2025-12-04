@@ -9,12 +9,19 @@ function proxyPlugin() {
   return {
     name: 'universal-proxy',
     configureServer(server) {
-      // B站媒体代理 - 用于下载音视频
+      // B站媒体代理 - 用于视频/音频流播放（支持 Range 请求）
       server.middlewares.use('/api/bili-proxy', async (req, res) => {
         const reqUrl = new URL(req.url, 'http://localhost')
         const targetUrl = reqUrl.searchParams.get('url')
         
-        console.log('[B站媒体代理] 目标URL:', targetUrl?.substring(0, 100))
+        // 验证 URL 白名单（仅允许 B站 CDN 域名）
+        const allowedDomains = [
+          'bilivideo.com',
+          'bilivideo.cn', 
+          'hdslb.com',
+          'akamaized.net',
+          'biliapi.net'
+        ]
         
         if (!targetUrl) {
           res.writeHead(400, { 'Content-Type': 'application/json' })
@@ -31,37 +38,70 @@ function proxyPlugin() {
           return
         }
         
+        // 域名白名单校验
+        const isAllowed = allowedDomains.some(d => target.hostname.endsWith(d))
+        if (!isAllowed) {
+          console.warn('[B站媒体代理] 域名不在白名单:', target.hostname)
+          res.writeHead(403, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: '域名不在允许列表中' }))
+          return
+        }
+        
         const client = target.protocol === 'https:' ? https : http
+        const headers = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://www.bilibili.com/',
+          'Origin': 'https://www.bilibili.com'
+        }
+        
+        // 转发 Range 请求头（用于视频 seek）
+        if (req.headers.range) {
+          headers['Range'] = req.headers.range
+        }
+        
         const options = {
           hostname: target.hostname,
           port: target.port || (target.protocol === 'https:' ? 443 : 80),
           path: target.pathname + target.search,
           method: 'GET',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': 'https://www.bilibili.com/',
-            'Origin': 'https://www.bilibili.com'
-          }
+          headers
         }
         
         const proxyReq = client.request(options, (proxyRes) => {
-          console.log('[B站媒体代理] 响应状态:', proxyRes.statusCode)
-          
           // 处理重定向
           if (proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
-            // 简单重定向处理
             const redirectUrl = proxyRes.headers.location
-            console.log('[B站媒体代理] 重定向到:', redirectUrl)
             res.writeHead(302, { 'Location': `/api/bili-proxy?url=${encodeURIComponent(redirectUrl)}` })
             res.end()
             return
           }
           
-          const headers = { ...proxyRes.headers }
-          delete headers['content-security-policy']
-          res.setHeader('Access-Control-Allow-Origin', '*')
-          // 不设置 Content-Disposition: attachment，允许流式播放
-          res.writeHead(proxyRes.statusCode, headers)
+          // 构建响应头
+          const responseHeaders = {}
+          
+          // 保留必要的响应头
+          if (proxyRes.headers['content-type']) {
+            responseHeaders['Content-Type'] = proxyRes.headers['content-type']
+          }
+          if (proxyRes.headers['content-length']) {
+            responseHeaders['Content-Length'] = proxyRes.headers['content-length']
+          }
+          if (proxyRes.headers['content-range']) {
+            responseHeaders['Content-Range'] = proxyRes.headers['content-range']
+          }
+          if (proxyRes.headers['accept-ranges']) {
+            responseHeaders['Accept-Ranges'] = proxyRes.headers['accept-ranges']
+          }
+          
+          // CORS 头
+          responseHeaders['Access-Control-Allow-Origin'] = '*'
+          responseHeaders['Access-Control-Allow-Headers'] = 'Range'
+          responseHeaders['Access-Control-Expose-Headers'] = 'Content-Range, Content-Length, Accept-Ranges'
+          
+          // 缓存控制
+          responseHeaders['Cache-Control'] = 'public, max-age=3600'
+          
+          res.writeHead(proxyRes.statusCode, responseHeaders)
           proxyRes.pipe(res)
         })
         
@@ -74,6 +114,20 @@ function proxyPlugin() {
         })
         
         proxyReq.end()
+      })
+      
+      // 处理 OPTIONS 预检请求
+      server.middlewares.use('/api/bili-proxy', (req, res, next) => {
+        if (req.method === 'OPTIONS') {
+          res.setHeader('Access-Control-Allow-Origin', '*')
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+          res.setHeader('Access-Control-Allow-Headers', 'Range')
+          res.setHeader('Access-Control-Max-Age', '86400')
+          res.writeHead(204)
+          res.end()
+          return
+        }
+        next()
       })
       
       // 通用代理
@@ -298,6 +352,27 @@ export default defineConfig({
         headers: {
           'Referer': 'https://www.qingting.fm',
           'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
+        }
+      },
+      // 网易云 API 代理（默认指向公开 NeteaseCloudMusicApi，可按需通过环境变量覆盖）
+      '/api/netease': {
+        target: process.env.VITE_NETEASE_API || 'https://netease-cloud-music-api.vercel.app',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/netease/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            // 从自定义请求头读取 cookie 并转发
+            const neteaseCookie = req.headers['x-netease-cookie']
+            if (neteaseCookie) {
+              proxyReq.setHeader('Cookie', neteaseCookie)
+            }
+            proxyReq.setHeader('Referer', 'https://music.163.com')
+            proxyReq.setHeader('Origin', 'https://music.163.com')
+            proxyReq.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+          })
+          proxy.on('error', (err, req, res) => {
+            console.error('[网易云代理] 错误:', err.message)
+          })
         }
       },
     },
