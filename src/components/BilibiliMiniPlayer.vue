@@ -26,6 +26,8 @@ const props = defineProps({
 const emit = defineEmits(['close', 'quality-change', 'ended', 'error', 'toggle-favorite', 'open-browser'])
 
 const isNative = Capacitor.isNativePlatform()
+const useServerProxy = import.meta.env.VITE_FORCE_SERVER_PROXY === 'true' ||
+  (import.meta.env.DEV && import.meta.env.VITE_USE_SERVER_PROXY !== 'false')
 
 // 单一 Refs
 const videoRef = ref(null)
@@ -72,7 +74,13 @@ function buildProxyUrl(url) {
   if (REMOTE_PROXY_URL) {
     return `${REMOTE_PROXY_URL}${encodeURIComponent(url)}`
   }
-  return isNative ? url : `/api/bili-proxy?url=${encodeURIComponent(url)}`
+  if (!isNative && useServerProxy) {
+    return `/api/bili-proxy?url=${encodeURIComponent(url)}`
+  }
+  if (!isNative) {
+    console.warn('[视频播放] 未配置 Web 代理，直接使用原始地址，可能因防盗链被拒绝')
+  }
+  return url
 }
 
 // 原生端：使用 CapacitorHttp 下载媒体并创建 Blob URL

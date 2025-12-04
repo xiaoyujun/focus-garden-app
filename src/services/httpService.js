@@ -44,7 +44,9 @@ export async function httpGet(url, options = {}) {
   } else {
     // Web端使用fetch
     const response = await fetch(url, {
-      headers: options.headers
+      headers: options.headers,
+      credentials: options.credentials,
+      mode: options.mode
     })
     
     if (!response.ok) {
@@ -100,7 +102,9 @@ export async function httpPost(url, data = {}, options = {}) {
         'Content-Type': 'application/json',
         ...options.headers
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      credentials: options.credentials,
+      mode: options.mode
     })
     
     if (!response.ok) {
@@ -138,7 +142,9 @@ export async function httpGetHtml(url, options = {}) {
     }
   } else {
     const response = await fetch(url, {
-      headers: options.headers
+      headers: options.headers,
+      credentials: options.credentials,
+      mode: options.mode
     })
     
     if (!response.ok) {

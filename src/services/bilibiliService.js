@@ -8,6 +8,8 @@ import { getAuthCookies, isLoggedIn } from './bilibiliAuth'
 import { httpGet } from './httpService'
 
 const isNative = Capacitor.isNativePlatform()
+const useServerProxy = import.meta.env.VITE_FORCE_SERVER_PROXY === 'true' ||
+  (import.meta.env.DEV && import.meta.env.VITE_USE_SERVER_PROXY !== 'false')
 
 // 通用 headers 与缓存配置
 const UA =
@@ -86,12 +88,15 @@ async function withCache(key, fetcher, useCache = true, ttl = CACHE_TTL) {
 }
 
 function buildHeaders(cookies) {
-  return {
-    'X-Bilibili-Cookie': cookies,
+  const headers = {
     'User-Agent': UA,
     Referer: REFERER,
     Origin: ORIGIN
   }
+  if (cookies) {
+    headers[useServerProxy ? 'X-Bilibili-Cookie' : 'Cookie'] = cookies
+  }
+  return headers
 }
 
 /**
@@ -135,11 +140,13 @@ async function fetchApi(path, options = {}) {
       })
     }
 
-    const prefix = isSearch ? '/api/bili-search' : '/api/bili'
-    const url = `${prefix}${path}`
+    const url = useServerProxy
+      ? `${isSearch ? '/api/bili-search' : '/api/bili'}${path}`
+      : `https://api.bilibili.com${path}`
     const response = await fetch(url, {
       headers: requestHeaders,
       credentials: 'include',
+      mode: useServerProxy ? 'same-origin' : 'cors',
       signal
     })
 

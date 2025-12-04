@@ -7,6 +7,8 @@ import { httpGet } from './httpService'
 import { useUserStore, onUserSwitched, onUserRemoved } from '../stores/userStore'
 
 const isNative = Capacitor.isNativePlatform()
+const useServerProxy = import.meta.env.VITE_FORCE_SERVER_PROXY === 'true' ||
+  (import.meta.env.DEV && import.meta.env.VITE_USE_SERVER_PROXY !== 'false')
 const SESSION_STORAGE_KEY = 'bilibili-auth-sessions'
 const DEFAULT_EXPIRE_DAYS = 30
 
@@ -72,6 +74,21 @@ function syncActiveSession(userId = getActiveUserId()) {
   }
 }
 
+function buildRequestHeaders(cookies) {
+  if (!cookies) return {}
+  return useServerProxy ? { 'X-Bilibili-Cookie': cookies } : { 'Cookie': cookies }
+}
+
+function buildFetchOptions(headers = {}) {
+  const options = { headers }
+  if (!useServerProxy && !isNative) {
+    // 生产环境直连时允许携带跨域凭证，避免走云端代理
+    options.credentials = 'include'
+    options.mode = 'cors'
+  }
+  return options
+}
+
 function saveSession(userId, session) {
   if (!userId) return null
   sessionsCache[userId] = {
@@ -119,7 +136,10 @@ function getApiUrl(path) {
   if (isNative) {
     return `https://passport.bilibili.com${path}`
   }
-  return `/api/passport${path}`
+  if (useServerProxy) {
+    return `/api/passport${path}`
+  }
+  return `https://passport.bilibili.com${path}`
 }
 
 /**
@@ -129,7 +149,10 @@ function getMainApiUrl(path) {
   if (isNative) {
     return `https://api.bilibili.com${path}`
   }
-  return `/api/bili${path}`
+  if (useServerProxy) {
+    return `/api/bili${path}`
+  }
+  return `https://api.bilibili.com${path}`
 }
 
 /**
@@ -188,7 +211,10 @@ export async function generateQRCode() {
     if (isNative) {
       data = await httpGet('https://passport.bilibili.com/x/passport-login/web/qrcode/generate')
     } else {
-      const response = await fetch(getApiUrl('/x/passport-login/web/qrcode/generate'))
+      const response = await fetch(
+        getApiUrl('/x/passport-login/web/qrcode/generate'),
+        buildFetchOptions()
+      )
       data = await response.json()
     }
     
@@ -217,7 +243,8 @@ export async function checkQRCodeStatus(qrcode_key) {
       data = await httpGet(`https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key=${qrcode_key}`)
     } else {
       response = await fetch(
-        getApiUrl(`/x/passport-login/web/qrcode/poll?qrcode_key=${qrcode_key}`)
+        getApiUrl(`/x/passport-login/web/qrcode/poll?qrcode_key=${qrcode_key}`),
+        buildFetchOptions()
       )
       data = await response.json()
     }
@@ -292,11 +319,10 @@ export async function fetchUserInfo(targetCookies = null) {
         }
       })
     } else {
-      const response = await fetch(getMainApiUrl('/x/web-interface/nav'), {
-        headers: {
-          'Cookie': cookies
-        }
-      })
+      const response = await fetch(
+        getMainApiUrl('/x/web-interface/nav'),
+        buildFetchOptions(buildRequestHeaders(cookies))
+      )
       data = await response.json()
     }
     
